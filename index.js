@@ -722,6 +722,9 @@
       const front = card.assets?.cardFront;
       const back = card.assets?.cardBack;
       if (!front || !back) throw new Error("Missing front/back assets in .dcard");
+      if (!front.data || !back.data) {
+        throw new Error("Card references external files. Please import the packaged .zip export.");
+      }
 
       const frontTex = await textureFromAsset(front);
       const backTex = await textureFromAsset(back);
@@ -922,7 +925,9 @@
 
   async function textureFromAsset(asset) {
     if (!dcard) throw new Error("DCard library not loaded");
+    if (!asset) throw new Error("Missing asset data");
     const dataURL = dcard.assetToDataURL(asset);
+    if (!dataURL) throw new Error("Asset is missing embedded data");
     const tex = await loadTextureFromURL(dataURL);
     return prepTexture(tex);
   }

@@ -388,8 +388,23 @@ class DCard {
   // ========================================
 
   async load(file) {
-    // Check if it's a zip file
-    if (file.name.endsWith('.zip')) {
+    const looksLikeZip = async () => {
+      if (file.name.endsWith('.zip')) return true;
+      if (file.type && file.type.includes('zip')) return true;
+
+      // Peek at the magic header (PK\u0003\u0004)
+      try {
+        const slice = file.slice(0, 4);
+        const buf = await slice.arrayBuffer();
+        const view = new Uint8Array(buf);
+        return view[0] === 0x50 && view[1] === 0x4b && view[2] === 0x03 && view[3] === 0x04;
+      } catch {
+        return false;
+      }
+    };
+
+    // Check if it's a zip file (even if the extension isn't .zip)
+    if (await looksLikeZip()) {
       return this.loadFromZip(file);
     }
 
