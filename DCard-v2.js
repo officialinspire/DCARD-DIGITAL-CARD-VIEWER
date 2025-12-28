@@ -116,20 +116,29 @@ class DCard {
         cardFront: options.cardFront || null,
         cardBack: options.cardBack || null,
         holographicPattern: options.holographicPattern || null,
-        
+
         // Brand assets
         brandLogo: options.brandLogoAsset || null,
         setLogo: options.setLogoAsset || null,
-        
+
         // Specialty overlays
         specialtyOverlay: options.specialtyOverlay || null,
         frameOverlay: options.frameOverlay || null,
-        
+
         thumbnail: options.thumbnail || null,
-        
+
         audio: {
           theme: options.audioTheme || null,
-          effects: options.audioEffects || []
+          effects: options.audioEffects || [],
+          settings: {
+            volume: options.audioVolume !== undefined ? options.audioVolume : 80,
+            fadeIn: options.audioFadeIn !== undefined ? options.audioFadeIn : 2.0,
+            fadeOut: options.audioFadeOut !== undefined ? options.audioFadeOut : 2.0,
+            startTime: options.audioStartTime !== undefined ? options.audioStartTime : 0,
+            loop: options.audioLoop || false,
+            autoplay: options.audioAutoplay || false,
+            instructions: options.audioInstructions || ''
+          }
         }
       },
       
@@ -379,30 +388,149 @@ class DCard {
   // ========================================
 
   async load(file) {
+    // Check if it's a zip file
+    if (file.name.endsWith('.zip')) {
+      return this.loadFromZip(file);
+    }
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
+
       reader.onload = async (e) => {
         try {
           const card = JSON.parse(e.target.result);
-          
+
           if (!this.validate(card)) {
             reject(new Error('Invalid .dcard file format'));
             return;
           }
-          
+
           const verified = await this.verify(card);
           card.signature.verified = verified;
-          
+
           resolve(card);
         } catch (error) {
           reject(new Error('Failed to parse .dcard file: ' + error.message));
         }
       };
-      
+
       reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsText(file);
     });
+  }
+
+  /**
+   * Load card from a zip file with separate asset files
+   * Reads the .dcard JSON and loads all referenced assets
+   */
+  async loadFromZip(file) {
+    if (typeof JSZip === 'undefined') {
+      throw new Error('JSZip is not loaded. Cannot load zip files.');
+    }
+
+    try {
+      const zip = await JSZip.loadAsync(file);
+
+      // Find the .dcard file
+      let dcardFile = null;
+      let folderName = null;
+
+      for (const [path, zipEntry] of Object.entries(zip.files)) {
+        if (path.endsWith('card.dcard') || path.endsWith('.dcard')) {
+          dcardFile = zipEntry;
+          // Get folder name from path
+          const parts = path.split('/');
+          if (parts.length > 1) {
+            folderName = parts[0];
+          }
+          break;
+        }
+      }
+
+      if (!dcardFile) {
+        throw new Error('No .dcard file found in zip');
+      }
+
+      // Read the .dcard JSON
+      const dcardContent = await dcardFile.async('text');
+      const card = JSON.parse(dcardContent);
+
+      if (!this.validate(card)) {
+        throw new Error('Invalid .dcard file format');
+      }
+
+      // Helper function to load asset from zip
+      const loadAsset = async (assetRef, folder) => {
+        if (!assetRef || !assetRef.file) {
+          return assetRef; // Return as-is if it's not a file reference
+        }
+
+        const assetPath = folder ? `${folder}/${assetRef.file}` : assetRef.file;
+        const assetFile = zip.file(assetPath);
+
+        if (!assetFile) {
+          console.warn(`Asset file not found: ${assetPath}`);
+          return null;
+        }
+
+        // Read asset as base64
+        const assetData = await assetFile.async('base64');
+
+        // Return asset in the original format (with base64 data)
+        return {
+          type: assetRef.type,
+          data: assetData,
+          width: assetRef.width,
+          height: assetRef.height
+        };
+      };
+
+      // Load all assets
+      if (card.assets.cardFront && card.assets.cardFront.file) {
+        card.assets.cardFront = await loadAsset(card.assets.cardFront, folderName);
+      }
+
+      if (card.assets.cardBack && card.assets.cardBack.file) {
+        card.assets.cardBack = await loadAsset(card.assets.cardBack, folderName);
+      }
+
+      if (card.assets.holographicPattern && card.assets.holographicPattern.file) {
+        card.assets.holographicPattern = await loadAsset(card.assets.holographicPattern, folderName);
+      }
+
+      if (card.assets.brandLogo && card.assets.brandLogo.file) {
+        card.assets.brandLogo = await loadAsset(card.assets.brandLogo, folderName);
+      }
+
+      if (card.assets.setLogo && card.assets.setLogo.file) {
+        card.assets.setLogo = await loadAsset(card.assets.setLogo, folderName);
+      }
+
+      if (card.assets.specialtyOverlay && card.assets.specialtyOverlay.file) {
+        card.assets.specialtyOverlay = await loadAsset(card.assets.specialtyOverlay, folderName);
+      }
+
+      if (card.assets.frameOverlay && card.assets.frameOverlay.file) {
+        card.assets.frameOverlay = await loadAsset(card.assets.frameOverlay, folderName);
+      }
+
+      if (card.assets.thumbnail && card.assets.thumbnail.file) {
+        card.assets.thumbnail = await loadAsset(card.assets.thumbnail, folderName);
+      }
+
+      // Load audio assets
+      if (card.assets.audio && card.assets.audio.theme && card.assets.audio.theme.file) {
+        card.assets.audio.theme = await loadAsset(card.assets.audio.theme, folderName);
+      }
+
+      // Verify the card
+      const verified = await this.verify(card);
+      card.signature.verified = verified;
+
+      return card;
+    } catch (error) {
+      throw new Error('Failed to load zip file: ' + error.message);
+    }
   }
 
   validate(card) {
@@ -428,11 +556,136 @@ class DCard {
     card.modified = new Date().toISOString();
     const json = JSON.stringify(card, null, 2);
     const blob = new Blob([json], { type: 'application/vnd.dantes.card+json' });
-    
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename || `${card.metadata.name.replace(/\s+/g, '-').toLowerCase()}.dcard`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Export card as a zip file with separate asset files
+   * This creates a folder structure: {card-name}-{fingerprint}/
+   *   - front.png/jpg
+   *   - back.png/jpg
+   *   - theme.mp3/wav
+   *   - card.dcard (JSON with file references)
+   */
+  async exportWithAssets(card, filename) {
+    if (typeof JSZip === 'undefined') {
+      console.error('JSZip is not loaded. Using legacy export.');
+      return this.download(card, filename);
+    }
+
+    card.modified = new Date().toISOString();
+
+    // Create folder name: {card-name}-{fingerprint-hash}
+    const cardName = card.metadata.name.replace(/\s+/g, '-').toLowerCase();
+    const hash = card.fingerprint.substring(0, 8); // Use first 8 chars of fingerprint
+    const folderName = `${cardName}-${hash}`;
+
+    const zip = new JSZip();
+    const folder = zip.folder(folderName);
+
+    // Create a copy of the card with file references instead of base64
+    const exportCard = JSON.parse(JSON.stringify(card));
+    const assetFiles = {};
+
+    // Helper function to get file extension from MIME type
+    const getExtension = (mimeType) => {
+      const map = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/gif': 'gif',
+        'image/webp': 'webp',
+        'audio/mpeg': 'mp3',
+        'audio/mp3': 'mp3',
+        'audio/wav': 'wav',
+        'audio/ogg': 'ogg',
+        'audio/webm': 'webm'
+      };
+      return map[mimeType] || 'bin';
+    };
+
+    // Helper function to add asset to zip and update reference
+    const addAsset = (asset, assetName) => {
+      if (asset && asset.data) {
+        const ext = getExtension(asset.type);
+        const filename = `${assetName}.${ext}`;
+
+        // Convert base64 to binary and add to zip
+        const byteCharacters = atob(asset.data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        folder.file(filename, byteArray);
+
+        // Return file reference instead of base64
+        return {
+          type: asset.type,
+          file: filename,
+          width: asset.width,
+          height: asset.height
+        };
+      }
+      return null;
+    };
+
+    // Process all assets
+    if (exportCard.assets.cardFront) {
+      exportCard.assets.cardFront = addAsset(card.assets.cardFront, 'front');
+    }
+
+    if (exportCard.assets.cardBack) {
+      exportCard.assets.cardBack = addAsset(card.assets.cardBack, 'back');
+    }
+
+    if (exportCard.assets.holographicPattern) {
+      exportCard.assets.holographicPattern = addAsset(card.assets.holographicPattern, 'holographic');
+    }
+
+    if (exportCard.assets.brandLogo) {
+      exportCard.assets.brandLogo = addAsset(card.assets.brandLogo, 'brand-logo');
+    }
+
+    if (exportCard.assets.setLogo) {
+      exportCard.assets.setLogo = addAsset(card.assets.setLogo, 'set-logo');
+    }
+
+    if (exportCard.assets.specialtyOverlay) {
+      exportCard.assets.specialtyOverlay = addAsset(card.assets.specialtyOverlay, 'specialty-overlay');
+    }
+
+    if (exportCard.assets.frameOverlay) {
+      exportCard.assets.frameOverlay = addAsset(card.assets.frameOverlay, 'frame-overlay');
+    }
+
+    if (exportCard.assets.thumbnail) {
+      exportCard.assets.thumbnail = addAsset(card.assets.thumbnail, 'thumbnail');
+    }
+
+    // Process audio assets
+    if (exportCard.assets.audio && exportCard.assets.audio.theme) {
+      exportCard.assets.audio.theme = addAsset(card.assets.audio.theme, 'theme');
+    }
+
+    // Add the .dcard JSON file with file references
+    const json = JSON.stringify(exportCard, null, 2);
+    folder.file('card.dcard', json);
+
+    // Generate and download the zip
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename || `${folderName}.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
