@@ -4,6 +4,10 @@
     return;
   }
 
+  if (!window.DCard) {
+    console.warn("DCard-v2 library missing - .dcard import/export disabled.");
+  }
+
   // Default filenames (optional)
   const DEFAULT_FRONT = "./dante-front-card.png";
   const DEFAULT_BACK  = "./backside.png";
@@ -27,6 +31,9 @@
   const btnAuto = document.getElementById("btnAuto");
   const btnMute = document.getElementById("btnMute");
   const btnOpenSettings = document.getElementById("btnOpenSettings");
+  const fileDcard = document.getElementById("fileDcard");
+  const btnImportDcard = document.getElementById("btnImportDcard");
+  const btnExportDcard = document.getElementById("btnExportDcard");
 
   const btnHamburger = document.getElementById("btnHamburger");
   const mobilePanel = document.getElementById("mobilePanel");
@@ -105,6 +112,11 @@
 
   // State
   let autoRotate = false;
+  const dcard = window.DCard ? new DCard() : null;
+  let loadedCardData = null;
+  let loadedMeta = null;
+  let lastFrontAsset = null;
+  let lastBackAsset = null;
 
   // --- Audio Context for SFX ---
   let audioCtx = null;
@@ -416,7 +428,7 @@
   btnImportCollection.addEventListener("click", () => {
     clickSfx("menu");
     startMusicWithFade();
-    alert("IMPORT COLLECTION feature coming soon! This will allow you to batch-load multiple cards.");
+    requestDcardFile();
   });
 
   // Helpers
@@ -431,6 +443,95 @@
   }
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  function requestDcardFile() {
+    if (!fileDcard) return;
+    fileDcard.value = "";
+    fileDcard.click();
+  }
+
+  async function loadDcardFile(file) {
+    if (!dcard) {
+      alert("DCard library failed to load.");
+      return;
+    }
+
+    setLoading(true, "Loading .dcard file…");
+    try {
+      const card = await dcard.load(file);
+      const front = card.assets?.cardFront;
+      const back = card.assets?.cardBack;
+      if (!front || !back) throw new Error("Missing front/back assets in .dcard");
+
+      const frontTex = await textureFromAsset(front);
+      const backTex = await textureFromAsset(back);
+
+      clearCard();
+      cardGroup = createCard(frontTex, backTex);
+      root.add(cardGroup);
+
+      loadedCardData = card;
+      loadedMeta = card.metadata || null;
+      lastFrontAsset = front;
+      lastBackAsset = back;
+
+      cardGroup.rotation.x = rot.x;
+      cardGroup.rotation.y = rot.y;
+
+      showPicker(false);
+      hideStartMenu();
+      startMusicWithFade();
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to load .dcard: ${err.message}`);
+      showPicker(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function exportCurrentDcard() {
+    if (!dcard) {
+      alert("DCard library failed to load.");
+      return;
+    }
+
+    if (!lastFrontAsset || !lastBackAsset) {
+      alert("Load a card first, then export.");
+      return;
+    }
+
+    setLoading(true, "Packing .dcard…");
+    try {
+      let card;
+      if (loadedCardData) {
+        card = JSON.parse(JSON.stringify(loadedCardData));
+        card.assets = { ...card.assets, cardFront: lastFrontAsset, cardBack: lastBackAsset };
+        card.modified = new Date().toISOString();
+        card.fingerprint = await dcard.generateFingerprint(card);
+        card.signature = card.signature || {};
+        card.signature.checksum = await dcard.generateChecksum(card);
+      } else {
+        const meta = loadedMeta || {};
+        card = await dcard.create({
+          name: meta.name || "Custom Card",
+          caption: meta.caption || "Exported from .dcard viewer",
+          set: meta.set || "Viewer",
+          cardNumber: meta.cardNumber || "1",
+          totalInSet: meta.totalInSet || "1",
+          cardFront: lastFrontAsset,
+          cardBack: lastBackAsset
+        });
+      }
+
+      dcard.download(card);
+    } catch (err) {
+      console.error(err);
+      alert(`Unable to export .dcard: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // --- Three.js scene ---
   const renderer = new THREE.WebGLRenderer({
@@ -515,6 +616,45 @@
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     return tex;
+  }
+
+  async function blobToDataURL(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Could not read blob"));
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function assetFromURL(url) {
+    if (!dcard) throw new Error("DCard library not loaded");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Could not fetch ${url}`);
+    const blob = await res.blob();
+    const dataURL = await blobToDataURL(blob);
+
+    const img = new Image();
+    const loaded = new Promise((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Image decode failed"));
+    });
+    img.src = dataURL;
+    await loaded;
+
+    return {
+      type: blob.type || "image/png",
+      data: dataURL.split(",")[1],
+      width: img.width,
+      height: img.height
+    };
+  }
+
+  async function textureFromAsset(asset) {
+    if (!dcard) throw new Error("DCard library not loaded");
+    const dataURL = dcard.assetToDataURL(asset);
+    const tex = await loadTextureFromURL(dataURL);
+    return prepTexture(tex);
   }
 
   function clearCard() {
@@ -794,6 +934,18 @@
       const frontTex = prepTexture(await loadTextureFromFile(f));
       const backTex = prepTexture(await loadTextureFromFile(b));
 
+      if (dcard) {
+        lastFrontAsset = await dcard.imageToAsset(f);
+        lastBackAsset = await dcard.imageToAsset(b);
+      }
+      loadedCardData = null;
+      loadedMeta = {
+        name: f.name || "Custom Upload",
+        set: "Manual Upload",
+        cardNumber: "1",
+        totalInSet: "1"
+      };
+
       clearCard();
       cardGroup = createCard(frontTex, backTex);
       root.add(cardGroup);
@@ -820,6 +972,18 @@
       const frontTex = prepTexture(await loadTextureFromURL(DEFAULT_FRONT));
       const backTex = prepTexture(await loadTextureFromURL(DEFAULT_BACK));
 
+      if (dcard) {
+        lastFrontAsset = await assetFromURL(DEFAULT_FRONT);
+        lastBackAsset = await assetFromURL(DEFAULT_BACK);
+      }
+      loadedCardData = null;
+      loadedMeta = {
+        name: "Dante Default",
+        set: "Demo Pack",
+        cardNumber: "1",
+        totalInSet: "1"
+      };
+
       clearCard();
       cardGroup = createCard(frontTex, backTex);
       root.add(cardGroup);
@@ -835,6 +999,23 @@
       alert("Default filenames not found. Use the uploader instead.");
       showPicker(true);
     }
+  });
+
+  btnImportDcard.addEventListener("click", () => {
+    clickSfx("menu");
+    requestDcardFile();
+  });
+
+  btnExportDcard.addEventListener("click", () => {
+    clickSfx("menu");
+    exportCurrentDcard();
+  });
+
+  fileDcard.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await loadDcardFile(file);
+    e.target.value = "";
   });
 
   // Animation loop

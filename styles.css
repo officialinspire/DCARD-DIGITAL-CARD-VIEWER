@@ -782,6 +782,13 @@ canvas#c{
   font-size:12px;
 }
 
+.picker-divider{
+  height:1px;
+  margin:16px 0 12px;
+  background:linear-gradient(90deg, rgba(255,255,255,.05), rgba(255,255,255,.25), rgba(255,255,255,.05));
+  border-radius:999px;
+}
+
 /* Footer */
 .footer{
   padding:10px 16px;

@@ -8,6 +8,7 @@
   </head>
 
   <body>
+    <input id="fileDcard" type="file" accept=".dcard,application/json" style="display:none" />
     <!-- Start Menu (shown on page load) -->
     <div id="startMenu" class="start-menu">
       <div class="start-menu-content">
@@ -22,7 +23,7 @@
           </button>
           <button class="start-btn" id="btnImportCollection">
             <span class="btn-icon">📦</span>
-            <span>IMPORT COLLECTION</span>
+            <span>IMPORT .DCARD</span>
           </button>
           <button class="start-btn" id="btnSettingsStart">
             <span class="btn-icon">⚙️</span>
@@ -204,7 +205,17 @@
             </div>
 
             <div class="picker-note">
-              Default filenames (optional): <code>dante-front-card.png</code> and <code>backside.png</code> — plus <code>.dcard</code> packs coming soon.
+              Default filenames (optional): <code>dante-front-card.png</code> and <code>backside.png</code> — or load a <code>.dcard</code> package below.
+            </div>
+
+            <div class="picker-divider"></div>
+
+            <div class="picker-title">Import / Export .dcard</div>
+            <div class="picker-sub">Load a saved DCard package or export your currently loaded images to share.</div>
+
+            <div class="picker-actions">
+              <button id="btnImportDcard" class="btn" type="button">Import .dcard</button>
+              <button id="btnExportDcard" class="btn" type="button">Export .dcard</button>
             </div>
           </div>
         </div>
@@ -222,6 +233,7 @@
     </audio>
 
     <script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+    <script src="./DCard-v2.js"></script>
     <script src="./index.js"></script>
   </body>
 </html>
