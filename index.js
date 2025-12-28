@@ -27,6 +27,7 @@
   const btnTryDefaults = document.getElementById("btnTryDefaults");
 
   const btnOpenUploader = document.getElementById("btnOpenUploader");
+  const btnOpenBinder = document.getElementById("btnOpenBinder");
   const btnReset = document.getElementById("btnReset");
   const btnAuto = document.getElementById("btnAuto");
   const btnMute = document.getElementById("btnMute");
@@ -38,6 +39,7 @@
   const btnHamburger = document.getElementById("btnHamburger");
   const mobilePanel = document.getElementById("mobilePanel");
   const mOpenUploader = document.getElementById("mOpenUploader");
+  const mOpenBinder = document.getElementById("mOpenBinder");
   const mReset = document.getElementById("mReset");
   const mAuto = document.getElementById("mAuto");
   const mMute = document.getElementById("mMute");
@@ -46,6 +48,7 @@
   // DOM - Start Menu
   const startMenu = document.getElementById("startMenu");
   const btnStartViewer = document.getElementById("btnStartViewer");
+  const btnStartBinder = document.getElementById("btnStartBinder");
   const btnImportCollection = document.getElementById("btnImportCollection");
   const btnSettingsStart = document.getElementById("btnSettingsStart");
 
@@ -64,6 +67,15 @@
   const themeSelect = document.getElementById("themeSelect");
   const btnApplySettings = document.getElementById("btnApplySettings");
   const btnResetSettings = document.getElementById("btnResetSettings");
+
+  // DOM - Binder
+  const binderModal = document.getElementById("binderModal");
+  const binderList = document.getElementById("binderList");
+  const binderEmpty = document.getElementById("binderEmpty");
+  const binderStoredCount = document.getElementById("binderStoredCount");
+  const binderExportedCount = document.getElementById("binderExportedCount");
+  const binderUpdatedAt = document.getElementById("binderUpdatedAt");
+  const btnCloseBinder = document.getElementById("btnCloseBinder");
 
   // Audio
   const bgMusic = document.getElementById("bgMusic");
@@ -117,6 +129,9 @@
   let loadedMeta = null;
   let lastFrontAsset = null;
   let lastBackAsset = null;
+
+  const BINDER_KEY = 'dcard-binder-v1';
+  let binderState = loadBinderState();
 
   // --- Audio Context for SFX ---
   let audioCtx = null;
@@ -425,6 +440,13 @@
     hideStartMenu();
   });
 
+  btnStartBinder.addEventListener("click", () => {
+    clickSfx("menu");
+    startMusicWithFade();
+    hideStartMenu();
+    openBinder();
+  });
+
   btnImportCollection.addEventListener("click", () => {
     clickSfx("menu");
     startMusicWithFade();
@@ -443,6 +465,244 @@
   }
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  // --- Binder helpers ---
+  function loadBinderState() {
+    try {
+      const raw = localStorage.getItem(BINDER_KEY);
+      const parsed = raw ? JSON.parse(raw) : { cards: [] };
+      return parsed?.cards ? parsed : { cards: [] };
+    } catch (err) {
+      console.warn("Could not load binder; starting fresh", err);
+      return { cards: [] };
+    }
+  }
+
+  function persistBinderState() {
+    try {
+      localStorage.setItem(BINDER_KEY, JSON.stringify(binderState));
+    } catch (err) {
+      console.warn("Failed to persist binder", err);
+    }
+  }
+
+  function normalizeFingerprintLog(log) {
+    return Array.isArray(log) ? log : [];
+  }
+
+  function recordFingerprintEvent(action) {
+    const now = new Date().toISOString();
+    const targetMeta = loadedCardData?.metadata || loadedMeta || {};
+    const log = normalizeFingerprintLog(targetMeta.fingerprintLog);
+    log.push({ action, timestamp: now });
+
+    if (loadedCardData) {
+      loadedCardData.metadata = { ...(loadedCardData.metadata || {}), fingerprintLog: log };
+    }
+    loadedMeta = { ...(loadedMeta || {}), fingerprintLog: log };
+
+    return { log, timestamp: now };
+  }
+
+  function getCurrentCardId() {
+    return loadedMeta?.binderId || loadedCardData?.fingerprint || loadedMeta?.fingerprint || `card-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function snapshotCurrentCard(status = 'stored') {
+    if (!lastFrontAsset || !lastBackAsset) return null;
+
+    const metaCopy = JSON.parse(JSON.stringify(loadedMeta || {}));
+    const cardId = getCurrentCardId();
+    metaCopy.binderId = cardId;
+
+    const entry = {
+      id: cardId,
+      name: metaCopy.name || 'Untitled Card',
+      set: metaCopy.set || 'Custom',
+      cardNumber: metaCopy.cardNumber || '1',
+      fingerprint: loadedCardData?.fingerprint || metaCopy.fingerprint || null,
+      fingerprintLog: normalizeFingerprintLog(metaCopy.fingerprintLog),
+      status,
+      savedAt: new Date().toISOString(),
+      meta: metaCopy,
+      frontAsset: lastFrontAsset,
+      backAsset: lastBackAsset,
+    };
+
+    loadedMeta = metaCopy;
+    return entry;
+  }
+
+  function upsertBinderEntry(entry) {
+    if (!entry) return;
+    const idx = binderState.cards.findIndex((c) => c.id === entry.id || (entry.fingerprint && c.fingerprint === entry.fingerprint));
+    if (idx >= 0) {
+      binderState.cards[idx] = { ...binderState.cards[idx], ...entry };
+    } else {
+      binderState.cards.push(entry);
+    }
+    persistBinderState();
+    renderBinder();
+  }
+
+  function saveCurrentToBinder(status = 'stored') {
+    const entry = snapshotCurrentCard(status);
+    upsertBinderEntry(entry);
+  }
+
+  function moveBinderEntry(id, direction = -1) {
+    const idx = binderState.cards.findIndex((c) => c.id === id);
+    if (idx < 0) return;
+    const swapWith = idx + direction;
+    if (swapWith < 0 || swapWith >= binderState.cards.length) return;
+    const temp = binderState.cards[swapWith];
+    binderState.cards[swapWith] = binderState.cards[idx];
+    binderState.cards[idx] = temp;
+    persistBinderState();
+    renderBinder();
+  }
+
+  async function openBinderCard(id) {
+    const card = binderState.cards.find((c) => c.id === id);
+    if (!card) return;
+    setLoading(true, "Loading from binder…");
+    try {
+      const frontTex = await textureFromAsset(card.frontAsset);
+      const backTex = await textureFromAsset(card.backAsset);
+
+      clearCard();
+      cardGroup = createCard(frontTex, backTex);
+      root.add(cardGroup);
+
+      loadedMeta = { ...(card.meta || {}), binderId: card.id, fingerprintLog: card.fingerprintLog || [] };
+      loadedCardData = null;
+      lastFrontAsset = card.frontAsset;
+      lastBackAsset = card.backAsset;
+
+      cardGroup.rotation.x = rot.x;
+      cardGroup.rotation.y = rot.y;
+
+      showPicker(false);
+      hideStartMenu();
+      closeBinder();
+    } catch (err) {
+      console.error(err);
+      alert("Unable to load card from binder.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function renderBinder() {
+    if (!binderList) return;
+    binderList.innerHTML = "";
+    const cards = binderState.cards;
+
+    if (!cards.length) {
+      binderEmpty.style.display = 'block';
+    } else {
+      binderEmpty.style.display = 'none';
+    }
+
+    let latest = null;
+    let exported = 0;
+    cards.forEach((card) => {
+      if (!latest || (card.savedAt && card.savedAt > latest)) latest = card.savedAt;
+      if (card.status === 'exported') exported += 1;
+
+      const el = document.createElement('div');
+      el.className = 'binder-card';
+      el.setAttribute('role', 'listitem');
+
+      const title = document.createElement('h4');
+      title.textContent = card.name;
+
+      const metaRow = document.createElement('div');
+      metaRow.className = 'binder-meta';
+      metaRow.textContent = `${card.set} • Card ${card.cardNumber}`;
+
+      const badges = document.createElement('div');
+      badges.className = 'binder-badges';
+      const statusBadge = document.createElement('span');
+      statusBadge.className = 'binder-badge binder-status';
+      statusBadge.textContent = card.status === 'exported' ? 'Exported' : 'Stored';
+      badges.appendChild(statusBadge);
+
+      if (card.fingerprint) {
+        const fp = document.createElement('span');
+        fp.className = 'binder-badge';
+        fp.textContent = `Fingerprint: ${card.fingerprint.slice(0, 10)}…`;
+        badges.appendChild(fp);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'binder-actions';
+
+      const viewBtn = document.createElement('button');
+      viewBtn.className = 'btn primary';
+      viewBtn.textContent = 'Open in Viewer';
+      viewBtn.addEventListener('click', () => openBinderCard(card.id));
+
+      const moveUp = document.createElement('button');
+      moveUp.className = 'btn';
+      moveUp.textContent = '⬆️ Move Up';
+      moveUp.addEventListener('click', () => moveBinderEntry(card.id, -1));
+
+      const moveDown = document.createElement('button');
+      moveDown.className = 'btn';
+      moveDown.textContent = '⬇️ Move Down';
+      moveDown.addEventListener('click', () => moveBinderEntry(card.id, 1));
+
+      actions.append(viewBtn, moveUp, moveDown);
+
+      const logBox = document.createElement('div');
+      logBox.className = 'binder-log';
+      const log = normalizeFingerprintLog(card.fingerprintLog);
+      if (!log.length) {
+        const empty = document.createElement('div');
+        empty.textContent = 'No fingerprint events yet.';
+        logBox.appendChild(empty);
+      } else {
+        log.forEach((entry) => {
+          const row = document.createElement('div');
+          row.className = 'binder-log-entry';
+          const act = document.createElement('span');
+          act.textContent = entry.action;
+          const ts = document.createElement('span');
+          ts.textContent = new Date(entry.timestamp).toLocaleString();
+          row.append(act, ts);
+          logBox.appendChild(row);
+        });
+      }
+
+      el.append(title, metaRow, badges, actions, logBox);
+      binderList.appendChild(el);
+    });
+
+    binderStoredCount.textContent = cards.length - exported;
+    binderExportedCount.textContent = exported;
+    binderUpdatedAt.textContent = latest ? new Date(latest).toLocaleString() : '—';
+  }
+
+  function openBinder() {
+    if (!binderModal) return;
+    binderModal.classList.add('show');
+    binderModal.setAttribute('aria-hidden', 'false');
+    renderBinder();
+  }
+
+  function closeBinder() {
+    if (!binderModal) return;
+    binderModal.classList.remove('show');
+    binderModal.setAttribute('aria-hidden', 'true');
+  }
+
+  btnCloseBinder.addEventListener('click', closeBinder);
+  if (binderModal) {
+    binderModal.addEventListener('click', (e) => {
+      if (e.target === binderModal) closeBinder();
+    });
+  }
 
   function requestDcardFile() {
     if (!fileDcard) return;
@@ -474,6 +734,9 @@
       loadedMeta = card.metadata || null;
       lastFrontAsset = front;
       lastBackAsset = back;
+
+      recordFingerprintEvent('imported');
+      saveCurrentToBinder('stored');
 
       cardGroup.rotation.x = rot.x;
       cardGroup.rotation.y = rot.y;
@@ -524,6 +787,9 @@
         });
       }
 
+      const { log: exportLog } = recordFingerprintEvent('exported');
+      card.metadata = { ...(card.metadata || {}), fingerprintLog: exportLog };
+      saveCurrentToBinder('exported');
       dcard.download(card);
     } catch (err) {
       console.error(err);
@@ -893,6 +1159,20 @@
   btnOpenUploader.addEventListener("click", openUploader);
   mOpenUploader.addEventListener("click", () => { openUploader(); closeMobileMenu(); });
 
+  function openBinderAndCloseMobile() {
+    openBinder();
+    closeMobileMenu();
+  }
+
+  btnOpenBinder.addEventListener("click", () => {
+    clickSfx("menu");
+    openBinder();
+  });
+  mOpenBinder.addEventListener("click", () => {
+    clickSfx("menu");
+    openBinderAndCloseMobile();
+  });
+
   // Reset
   btnReset.addEventListener("click", resetView);
   mReset.addEventListener("click", () => { resetView(); closeMobileMenu(); });
@@ -953,6 +1233,7 @@
       cardGroup.rotation.x = rot.x;
       cardGroup.rotation.y = rot.y;
 
+      saveCurrentToBinder('stored');
       showPicker(false);
       setLoading(false);
     } catch (err) {
@@ -991,6 +1272,7 @@
       cardGroup.rotation.x = rot.x;
       cardGroup.rotation.y = rot.y;
 
+      saveCurrentToBinder('stored');
       showPicker(false);
       setLoading(false);
     } catch (err) {
@@ -1078,6 +1360,7 @@
     applyTheme(settings.theme);
     showPicker(true);
     setLoading(false);
+    renderBinder();
     resize();
     animate();
     

@@ -21,6 +21,10 @@
             <span class="btn-icon">🃏</span>
             <span>OPEN CARD VIEWER</span>
           </button>
+          <button class="start-btn" id="btnStartBinder">
+            <span class="btn-icon">📔</span>
+            <span>VIEW COLLECTION BINDER</span>
+          </button>
           <button class="start-btn" id="btnImportCollection">
             <span class="btn-icon">📦</span>
             <span>IMPORT .DCARD</span>
@@ -146,6 +150,7 @@
         <!-- Desktop controls -->
         <nav class="menu" aria-label="Main menu">
           <button class="menuBtn" id="btnOpenUploader" type="button">Upload Images</button>
+          <button class="menuBtn" id="btnOpenBinder" type="button">View Collection Binder</button>
           <button class="menuBtn" id="btnReset" type="button">Reset</button>
           <button class="menuBtn" id="btnAuto" type="button">Auto-Rotate: Off</button>
           <button class="menuBtn" id="btnMute" type="button">🔊 Music</button>
@@ -161,6 +166,7 @@
       <!-- Mobile dropdown -->
       <div class="mobilePanel" id="mobilePanel" aria-hidden="true">
         <button class="panelBtn" id="mOpenUploader" type="button">Upload Images</button>
+        <button class="panelBtn" id="mOpenBinder" type="button">Collection Binder</button>
         <button class="panelBtn" id="mReset" type="button">Reset</button>
         <button class="panelBtn" id="mAuto" type="button">Auto-Rotate: Off</button>
         <button class="panelBtn" id="mMute" type="button">🔊 Music</button>
@@ -224,6 +230,40 @@
       <footer class="footer">
         <span>.dcard ready holographic foil • Background music: Dante's World - Dark Void</span>
       </footer>
+    </div>
+
+    <!-- Collection Binder -->
+    <div id="binderModal" class="binder-modal" aria-hidden="true">
+      <div class="binder-content">
+        <div class="binder-header">
+          <div>
+            <div class="binder-title">📔 Collection Binder</div>
+            <div class="binder-subtitle">Persistent library of every card you've saved or exported.</div>
+          </div>
+          <button class="close-btn" id="btnCloseBinder" aria-label="Close binder">✕</button>
+        </div>
+
+        <div class="binder-stats">
+          <div class="binder-stat">
+            <div class="binder-stat-label">Saved / Stored</div>
+            <div class="binder-stat-value" id="binderStoredCount">0</div>
+          </div>
+          <div class="binder-stat">
+            <div class="binder-stat-label">Exported</div>
+            <div class="binder-stat-value" id="binderExportedCount">0</div>
+          </div>
+          <div class="binder-stat">
+            <div class="binder-stat-label">Last Updated</div>
+            <div class="binder-stat-value" id="binderUpdatedAt">—</div>
+          </div>
+        </div>
+
+        <div class="binder-body">
+          <div class="binder-note">Use the arrows to organize your binder and select any card to load it into the 3D viewer.</div>
+          <div id="binderEmpty" class="binder-empty">No cards saved yet. Import or export a .dcard to start your collection.</div>
+          <div id="binderList" class="binder-grid" role="list"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Audio element for background music -->
