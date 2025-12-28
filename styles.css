@@ -108,8 +108,10 @@ body{
   opacity:0;
   overflow:hidden;
   clip:rect(0 0 0 0);
-  pointer-events:none;
   inset:auto;
+  pointer-events:auto;
+  /* Keep the input reachable for programmatic clicks on all platforms */
+  left:-9999px;
 }
 
 /* Start Menu */
