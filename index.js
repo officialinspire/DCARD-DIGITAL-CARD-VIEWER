@@ -4,6 +4,103 @@
     return;
   }
 
+  function stopCardAudio(fadeDuration = 0.5) {
+    if (!cardAudio) return;
+
+    const endPlayback = () => {
+      cardAudio.pause();
+      cardAudio.currentTime = 0;
+      if (cardAudioUrl) {
+        URL.revokeObjectURL(cardAudioUrl);
+        cardAudioUrl = null;
+      }
+    };
+
+    if (cardAudio.volume > 0) {
+      fadeAudioVolume(cardAudio, 0, fadeDuration, endPlayback);
+    } else {
+      endPlayback();
+    }
+  }
+
+  function playCardAudio(card) {
+    if (!cardAudio || !card) return;
+
+    const audioAsset = card.assets?.audio?.theme;
+    const audioSettings = card.assets?.audio?.settings || {};
+
+    stopCardAudio();
+
+    if (!audioAsset || !audioAsset.data || !dcard) return;
+
+    const audioBlob = dcard.assetToBlob(audioAsset);
+    if (!audioBlob) return;
+
+    if (cardAudioUrl) {
+      URL.revokeObjectURL(cardAudioUrl);
+    }
+
+    cardAudioUrl = URL.createObjectURL(audioBlob);
+    cardAudio.src = cardAudioUrl;
+    cardAudio.loop = !!audioSettings.loop;
+
+    const startAt = clamp(audioSettings.startTime || 0, 0, Number.MAX_SAFE_INTEGER);
+    const setStartTime = () => {
+      try { cardAudio.currentTime = startAt; } catch {}
+    };
+
+    if (cardAudio.readyState >= 1) {
+      setStartTime();
+    } else {
+      cardAudio.addEventListener('loadedmetadata', setStartTime, { once: true });
+    }
+
+    if (audioSettings.instructions) {
+      cardAudio.setAttribute('data-instructions', audioSettings.instructions);
+      console.info('Card audio instructions:', audioSettings.instructions);
+    } else {
+      cardAudio.removeAttribute('data-instructions');
+    }
+
+    const targetVolume = clamp((audioSettings.volume ?? 80) / 100, 0, 1);
+    const fadeInDuration = audioSettings.fadeIn ?? 1.2;
+    const shouldAutoplay = audioSettings.autoplay !== false;
+
+    const startPlayback = () => {
+      const playPromise = cardAudio.play();
+      if (playPromise?.then) {
+        playPromise
+          .then(() => fadeAudioVolume(cardAudio, targetVolume, fadeInDuration))
+          .catch((err) => console.warn('Card audio playback blocked:', err?.message || err));
+      } else {
+        fadeAudioVolume(cardAudio, targetVolume, fadeInDuration);
+      }
+    };
+
+    cardAudio.volume = 0;
+
+    if (shouldAutoplay) {
+      if (cardAudio.readyState >= 2) {
+        startPlayback();
+      } else {
+        cardAudio.addEventListener('canplay', startPlayback, { once: true });
+      }
+    } else {
+      cardAudio.volume = targetVolume;
+    }
+  }
+
+  function handleCardAudio(card) {
+    if (!card?.assets?.audio?.theme) {
+      stopCardAudio();
+      return;
+    }
+
+    const audioSettings = card.assets.audio.settings || {};
+    fadeOutMusic(audioSettings.fadeOut ?? 1.0);
+    playCardAudio(card);
+  }
+
   if (!window.DCard) {
     console.warn("DCard-v2 library missing - .dcard import/export disabled.");
   }
@@ -78,6 +175,7 @@
   const btnCloseBinder = document.getElementById("btnCloseBinder");
 
   // Audio
+  const cardAudio = document.getElementById("cardAudio");
   const bgMusic = document.getElementById("bgMusic");
   
   // Settings State
@@ -121,6 +219,7 @@
   let musicPlaying = false;
   let musicMuted = false;
   let userInteracted = false;
+  let cardAudioUrl = null;
 
   // State
   let autoRotate = false;
@@ -247,6 +346,27 @@
       } else {
         bgMusic.pause();
         musicPlaying = false;
+      }
+    }
+
+    requestAnimationFrame(updateVolume);
+  }
+
+  function fadeAudioVolume(el, targetVolume, duration = 1.0, onComplete) {
+    if (!el) return;
+
+    const startVolume = el.volume;
+    const startTime = performance.now();
+
+    function updateVolume(currentTime) {
+      const elapsed = (currentTime - startTime) / 1000;
+      const progress = Math.min(elapsed / duration, 1);
+      el.volume = startVolume + (targetVolume - startVolume) * progress;
+
+      if (progress < 1) {
+        requestAnimationFrame(updateVolume);
+      } else if (typeof onComplete === 'function') {
+        onComplete();
       }
     }
 
@@ -746,7 +866,7 @@
 
       showPicker(false);
       hideStartMenu();
-      startMusicWithFade();
+      handleCardAudio(card);
     } catch (err) {
       console.error(err);
       alert(`Failed to load .dcard: ${err.message}`);
@@ -934,6 +1054,7 @@
 
   function clearCard() {
     if (!cardGroup) return;
+    stopCardAudio();
     root.remove(cardGroup);
     cardGroup.traverse((obj) => {
       if (obj.isMesh) {
