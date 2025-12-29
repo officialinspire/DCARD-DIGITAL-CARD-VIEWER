@@ -926,11 +926,21 @@
     }
   }
 
+  // Camera + controls constants
+  const ZOOM_DEFAULT = 3.2;
+  const ZOOM_MIN = 2.0;
+  const ZOOM_MAX = 8.0;
+
+  const rot = { x: -0.25, y: 0.65 };
+  const rotTarget = { x: rot.x, y: rot.y };
+
+  let zoom = ZOOM_DEFAULT;
+  let zoomTarget = zoom;
   // --- Three.js scene ---
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: settings.antialiasing,
-    alpha: true 
+    alpha: true
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1202,17 +1212,6 @@
   let pinchStartDist = null;
   let pinchStartZoom = null;
   let lastTapTime = 0;
-
-  const ZOOM_DEFAULT = 3.2;
-  const ZOOM_MIN = 2.0;
-  const ZOOM_MAX = 8.0;
-
-  const rot = { x: -0.25, y: 0.65 };
-  const rotTarget = { x: rot.x, y: rot.y };
-
-  let zoom = ZOOM_DEFAULT;
-  let zoomTarget = zoom;
-
   // Spin speed estimate (for foil boost)
   let spinSpeed = 0;
 
