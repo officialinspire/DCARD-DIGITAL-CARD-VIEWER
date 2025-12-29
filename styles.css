@@ -102,7 +102,7 @@ body{
 }
 
 .visually-hidden-input{
-  position:absolute;
+  position:fixed;
   width:1px;
   height:1px;
   opacity:0;
@@ -111,7 +111,8 @@ body{
   inset:auto;
   pointer-events:auto;
   /* Keep the input reachable for programmatic clicks on all platforms */
-  left:-9999px;
+  top:0;
+  left:0;
 }
 
 /* Start Menu */
@@ -123,6 +124,7 @@ body{
   place-items:center;
   background:var(--bg-gradient);
   padding:20px;
+  overflow:auto;
   opacity:1;
   transition:opacity 0.5s ease;
 }
@@ -696,6 +698,7 @@ canvas#c{
   backdrop-filter:blur(8px);
   border-top:1px solid var(--border);
   padding:18px;
+  overflow:auto;
 }
 
 .picker.show{
@@ -709,6 +712,8 @@ canvas#c{
   background:rgba(10,10,20,.75);
   box-shadow:var(--shadow);
   padding:16px;
+  max-height:calc(100vh - 80px);
+  overflow:auto;
 }
 
 .picker-title{
