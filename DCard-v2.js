@@ -389,8 +389,9 @@ class DCard {
 
   async load(file) {
     const looksLikeZip = async () => {
-      if (file.name.endsWith('.zip')) return true;
-      if (file.type && file.type.includes('zip')) return true;
+      const name = (file.name || '').toLowerCase();
+      if (name.endsWith('.zip')) return true;
+      if (file.type && file.type.toLowerCase().includes('zip')) return true;
 
       // Peek at the magic header (PK\u0003\u0004)
       try {
@@ -408,36 +409,28 @@ class DCard {
       return this.loadFromZip(file);
     }
 
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+    // Use the modern, promise-based File API for more reliable mobile support
+    try {
+      const text = await file.text();
+      const card = JSON.parse(text);
 
-      reader.onload = async (e) => {
-        try {
-          const card = JSON.parse(e.target.result);
+      if (!this.validate(card)) {
+        throw new Error('Invalid .dcard file format');
+      }
 
-          if (!this.validate(card)) {
-            reject(new Error('Invalid .dcard file format'));
-            return;
-          }
+      // Older .dcard exports may be missing a signature block entirely,
+      // which would previously throw and leave the UI stuck on the
+      // loading overlay. Normalize the structure so verification can run
+      // safely regardless of the source file.
+      card.signature = card.signature || {};
 
-          // Older .dcard exports may be missing a signature block entirely,
-          // which would previously throw and leave the UI stuck on the
-          // loading overlay. Normalize the structure so verification can run
-          // safely regardless of the source file.
-          card.signature = card.signature || {};
+      const verified = await this.verify(card);
+      card.signature.verified = verified;
 
-          const verified = await this.verify(card);
-          card.signature.verified = verified;
-
-          resolve(card);
-        } catch (error) {
-          reject(new Error('Failed to parse .dcard file: ' + error.message));
-        }
-      };
-
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsText(file);
-    });
+      return card;
+    } catch (error) {
+      throw new Error('Failed to parse .dcard file: ' + error.message);
+    }
   }
 
   /**
@@ -450,7 +443,8 @@ class DCard {
     }
 
     try {
-      const zip = await JSZip.loadAsync(file);
+      const zipSource = file instanceof Blob ? await file.arrayBuffer() : file;
+      const zip = await JSZip.loadAsync(zipSource);
 
       // Find the .dcard file
       let dcardFile = null;
