@@ -4,13 +4,13 @@
     return;
   }
 
-  function stopCardAudio(fadeDuration = 0.5) {
+  function stopCardAudio(fadeDuration = 0.5, { resetTitle = true } = {}) {
     if (!cardAudio) return;
 
     const endPlayback = () => {
       cardAudio.pause();
       cardAudio.currentTime = 0;
-      currentCardTrackTitle = null;
+      if (resetTitle) currentCardTrackTitle = null;
       if (cardAudioUrl) {
         URL.revokeObjectURL(cardAudioUrl);
         cardAudioUrl = null;
@@ -28,18 +28,18 @@
   function playCardAudio(card) {
     if (!cardAudio || !card) return;
 
-    currentCardTrackTitle = getCardAudioTitle(card);
-    updateMusicStatus();
-
     const audioAsset = card.assets?.audio?.theme;
     const audioSettings = card.assets?.audio?.settings || {};
 
-    stopCardAudio();
+    stopCardAudio(0.5, { resetTitle: false });
 
     if (!audioAsset || !audioAsset.data || !dcard) return;
 
     const audioBlob = dcard.assetToBlob(audioAsset);
     if (!audioBlob) return;
+
+    currentCardTrackTitle = getCardAudioTitle(card);
+    updateMusicStatus();
 
     if (cardAudioUrl) {
       URL.revokeObjectURL(cardAudioUrl);
@@ -257,10 +257,7 @@
 
   if (cardAudio) {
     cardAudio.addEventListener('play', updateMusicStatus);
-    cardAudio.addEventListener('pause', () => {
-      currentCardTrackTitle = null;
-      updateMusicStatus();
-    });
+    cardAudio.addEventListener('pause', updateMusicStatus);
     cardAudio.addEventListener('ended', () => {
       currentCardTrackTitle = null;
       updateMusicStatus();
@@ -1428,14 +1425,14 @@
   btnHamburger.addEventListener("click", () => toggleMobileMenu());
   function closeMobileMenu() { toggleMobileMenu(false); }
 
-  // Open uploader
-  function openUploader() {
-    showPicker(true);
+  // Open .dcard importer
+  function openImporter() {
+    requestDcardFile();
     clickSfx("menu");
   }
 
-  btnOpenUploader.addEventListener("click", openUploader);
-  mOpenUploader.addEventListener("click", () => { openUploader(); closeMobileMenu(); });
+  btnOpenUploader.addEventListener("click", openImporter);
+  mOpenUploader.addEventListener("click", () => { openImporter(); closeMobileMenu(); });
 
   function openBinderAndCloseMobile() {
     openBinder();
