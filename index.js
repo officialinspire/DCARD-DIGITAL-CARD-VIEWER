@@ -10,10 +10,12 @@
     const endPlayback = () => {
       cardAudio.pause();
       cardAudio.currentTime = 0;
+      currentCardTrackTitle = null;
       if (cardAudioUrl) {
         URL.revokeObjectURL(cardAudioUrl);
         cardAudioUrl = null;
       }
+      updateMusicStatus();
     };
 
     if (cardAudio.volume > 0) {
@@ -25,6 +27,9 @@
 
   function playCardAudio(card) {
     if (!cardAudio || !card) return;
+
+    currentCardTrackTitle = getCardAudioTitle(card);
+    updateMusicStatus();
 
     const audioAsset = card.assets?.audio?.theme;
     const audioSettings = card.assets?.audio?.settings || {};
@@ -88,11 +93,14 @@
     } else {
       cardAudio.volume = targetVolume;
     }
+
+    updateMusicStatus();
   }
 
   function handleCardAudio(card) {
     if (!card?.assets?.audio?.theme) {
       stopCardAudio();
+      updateMusicStatus();
       return;
     }
 
@@ -111,6 +119,10 @@
 
   // Thin like a playing card
   const CARD_THICKNESS = 0.008;
+
+  const BG_MUSIC_TITLE = "Dante's World - Dark Void";
+  const BASE_STATUS = ".dcard ready holographic foil";
+  const isMobileScreen = window.matchMedia('(max-width: 640px)').matches;
 
   // DOM - Main App
   const appEl = document.getElementById("app");
@@ -177,7 +189,9 @@
   // Audio
   const cardAudio = document.getElementById("cardAudio");
   const bgMusic = document.getElementById("bgMusic");
-  
+  const footerStatus = document.getElementById("footerStatus");
+  const footerMusic = document.getElementById("footerMusic");
+
   // Settings State
   let settings = {
     musicVolume: 35,
@@ -228,9 +242,40 @@
   let loadedMeta = null;
   let lastFrontAsset = null;
   let lastBackAsset = null;
+  let currentCardTrackTitle = null;
 
   const BINDER_KEY = 'dcard-binder-v1';
   let binderState = loadBinderState();
+
+  if (bgMusic) {
+    bgMusic.addEventListener('play', () => {
+      musicPlaying = true;
+      updateMusicStatus();
+    });
+    bgMusic.addEventListener('pause', updateMusicStatus);
+  }
+
+  if (cardAudio) {
+    cardAudio.addEventListener('play', updateMusicStatus);
+    cardAudio.addEventListener('pause', () => {
+      currentCardTrackTitle = null;
+      updateMusicStatus();
+    });
+    cardAudio.addEventListener('ended', () => {
+      currentCardTrackTitle = null;
+      updateMusicStatus();
+    });
+  }
+
+  function updateViewportHeightVar() {
+    const vh = (window.visualViewport?.height || window.innerHeight) * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+  }
+  updateViewportHeightVar();
+  window.addEventListener('resize', updateViewportHeightVar);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateViewportHeightVar);
+  }
 
   // --- Audio Context for SFX ---
   let audioCtx = null;
@@ -281,6 +326,7 @@
         console.log("✓ Music started successfully!");
         musicPlaying = true;
         fadeInMusic(2.5);
+        updateMusicStatus();
       }).catch(err => {
         console.log("Music autoplay blocked:", err.message);
         console.log("Will start on first user interaction...");
@@ -302,6 +348,7 @@
     userInteracted = true;
     console.log("User interacted - starting music");
     tryStartMusic();
+    updateMusicStatus();
   }
 
   // Add listeners for first user interaction
@@ -346,6 +393,7 @@
       } else {
         bgMusic.pause();
         musicPlaying = false;
+        updateMusicStatus();
       }
     }
 
@@ -373,9 +421,43 @@
     requestAnimationFrame(updateVolume);
   }
 
+  function getCardAudioTitle(card) {
+    const meta = card?.metadata || {};
+    const audio = card?.assets?.audio?.theme || {};
+    return (
+      meta.audioTitle ||
+      meta.musicTitle ||
+      meta.track ||
+      audio.title ||
+      audio.name ||
+      audio.filename ||
+      audio.fileName ||
+      "Card audio"
+    );
+  }
+
+  function updateMusicStatus() {
+    if (footerStatus) footerStatus.textContent = BASE_STATUS;
+    if (!footerMusic) return;
+
+    const cardIsPlaying = cardAudio && !cardAudio.paused && cardAudio.currentTime > 0 && !cardAudio.ended;
+    if (cardIsPlaying) {
+      footerMusic.textContent = `Card track: ${currentCardTrackTitle || "Card audio"}`;
+      return;
+    }
+
+    if (musicMuted) {
+      footerMusic.textContent = "Music muted";
+    } else if (musicPlaying && !bgMusic.paused) {
+      footerMusic.textContent = `Background: ${BG_MUSIC_TITLE}`;
+    } else {
+      footerMusic.textContent = `Background paused: ${BG_MUSIC_TITLE}`;
+    }
+  }
+
   function toggleMusic() {
     musicMuted = !musicMuted;
-    
+
     if (musicMuted) {
       fadeOutMusic(0.8);
       btnMute.textContent = "🔇 Music";
@@ -389,8 +471,9 @@
       btnMute.textContent = "🔊 Music";
       mMute.textContent = "🔊 Music";
     }
-    
+
     clickSfx("click");
+    updateMusicStatus();
   }
 
   // --- Settings Functions ---
@@ -927,8 +1010,8 @@
   }
 
   // Camera + controls constants
-  const ZOOM_DEFAULT = 3.2;
-  const ZOOM_MIN = 2.0;
+  const ZOOM_DEFAULT = isMobileScreen ? 2.6 : 3.2;
+  const ZOOM_MIN = isMobileScreen ? 1.8 : 2.0;
   const ZOOM_MAX = 8.0;
 
   const rot = { x: -0.25, y: 0.65 };
@@ -1557,8 +1640,9 @@
     setLoading(false);
     renderBinder();
     resize();
+    updateMusicStatus();
     animate();
-    
+
     // Try to start music immediately
     console.log("=== .DCARD FILE FORMAT VIEWER by #teamInspire ===");
     console.log("Audio file: Dante's World - Dark Void.mp3");

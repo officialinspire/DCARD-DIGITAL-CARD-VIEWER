@@ -99,6 +99,8 @@ body{
   background:var(--bg-gradient);
   color:var(--text);
   overflow:hidden;
+  min-height:100vh;
+  min-height:calc(var(--vh, 1vh) * 100);
 }
 
 .visually-hidden-input{
@@ -507,6 +509,7 @@ body{
 
 #app{
   height:100%;
+  min-height:calc(var(--vh, 1vh) * 100);
   display:grid;
   grid-template-rows:auto auto 1fr auto;
   opacity:0;
@@ -644,6 +647,8 @@ body{
 .stage{
   position:relative;
   height:100%;
+  min-height:calc(100dvh - 200px);
+  min-height:calc(var(--vh, 1vh) * 100 - 200px);
 }
 
 canvas#c{
@@ -930,7 +935,13 @@ canvas#c{
   color:var(--muted);
   font-size:12px;
   background:rgba(0,0,0,.22);
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
 }
+
+.footer-divider{opacity:.65;}
 
 /* Responsive */
 @media (max-width:860px){
@@ -957,4 +968,5 @@ canvas#c{
   .settings-footer .btn{width:100%}
   .hint{left:12px;right:12px;bottom:12px;font-size:12px}
   .hint .tiny{font-size:11px}
+  .stage{min-height:calc(var(--vh, 1vh) * 100 - 160px);}
 }
