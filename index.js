@@ -632,11 +632,16 @@
 
   function getCardAudioTitle(card) {
     const meta = card?.metadata || {};
+    const audioMeta = meta.audio || meta.soundtrack || {};
     const audio = card?.assets?.audio?.theme || {};
+
     return (
       meta.audioTitle ||
       meta.musicTitle ||
       meta.track ||
+      audioMeta.title ||
+      audioMeta.name ||
+      audioMeta.track ||
       audio.title ||
       audio.name ||
       audio.filename ||
@@ -1465,8 +1470,13 @@
     return !!(card?.assets?.cardFront?.data && card?.assets?.cardBack?.data);
   }
 
+  function assetsNeedHydration(card) {
+    const audioTheme = card?.assets?.audio?.theme;
+    return !hasEmbeddedCardArt(card) || (audioTheme && !audioTheme.data);
+  }
+
   async function ensureEmbeddedAssets(card, sourceFile) {
-    if (hasEmbeddedCardArt(card)) return card;
+    if (!assetsNeedHydration(card)) return card;
 
     const isZipSource = (sourceFile?.name || "").toLowerCase().endsWith('.zip');
     if (!isZipSource || !dcard?.loadFromZip) return card;
