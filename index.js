@@ -221,6 +221,7 @@
   const cardInfoSeries = document.getElementById("cardInfoSeries");
   const cardInfoCreator = document.getElementById("cardInfoCreator");
   const cardInfoRelease = document.getElementById("cardInfoRelease");
+  const btnPlayCardAudio = document.getElementById("btnPlayCardAudio");
 
   // Settings State
   let settings = {
@@ -266,6 +267,17 @@
   let userInteracted = false;
   let cardAudioUrl = null;
   let lastTrackKind = 'bg';
+  let cardInfoDragPreventClick = false;
+  const cardInfoPosition = { x: 0, y: 0 };
+  let cardInfoDrag = {
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+    moved: false,
+  };
 
   // State
   let autoRotate = false;
@@ -372,10 +384,16 @@
     if (cardInfoSeries) cardInfoSeries.textContent = series;
     if (cardInfoCreator) cardInfoCreator.textContent = creator;
     if (cardInfoRelease) cardInfoRelease.textContent = release;
+
+    updateCardAudioButton();
   }
 
   function toggleCardInfoPanel() {
     if (!cardInfoPanel || !btnCardInfo) return;
+    if (cardInfoDragPreventClick) {
+      cardInfoDragPreventClick = false;
+      return;
+    }
     const expanded = cardInfoPanel.getAttribute('aria-expanded') === 'true';
     const next = !expanded;
     cardInfoPanel.setAttribute('aria-expanded', next ? 'true' : 'false');
@@ -383,6 +401,20 @@
     if (next && cardInfoBody) {
       cardInfoBody.scrollTop = 0;
     }
+  }
+
+  function hasCardAudio() {
+    return !!(dcard && loadedCardData?.assets?.audio?.theme?.data);
+  }
+
+  function updateCardAudioButton() {
+    if (!btnPlayCardAudio) return;
+    const hasAudio = hasCardAudio();
+    const playingCard = isCardAudioPlaying();
+    btnPlayCardAudio.disabled = !hasAudio;
+    const label = hasAudio ? (playingCard ? 'Stop card audio' : '▶ Play audio') : 'No card audio loaded';
+    btnPlayCardAudio.textContent = label;
+    btnPlayCardAudio.setAttribute('aria-label', hasAudio ? label : 'Card audio unavailable');
   }
 
   function updateViewportHeightVar() {
@@ -602,7 +634,75 @@
     }
 
     updateMusicButtons();
+    updateCardAudioButton();
     updatePlayerUI();
+  }
+
+  function toggleCardAudioPlayback() {
+    if (!hasCardAudio()) {
+      clickSfx("error");
+      return;
+    }
+
+    if (isCardAudioPlaying()) {
+      stopCardAudio(0.4, { resumeMusic: true });
+    } else if (loadedCardData) {
+      handleCardAudio(loadedCardData);
+    }
+
+    clickSfx("click");
+    updateCardAudioButton();
+  }
+
+  function applyCardInfoPosition() {
+    if (!cardInfoPanel) return;
+    cardInfoPanel.style.setProperty('--card-info-x', `${cardInfoPosition.x}px`);
+    cardInfoPanel.style.setProperty('--card-info-y', `${cardInfoPosition.y}px`);
+  }
+
+  function startCardInfoDrag(e) {
+    if (!cardInfoPanel) return;
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (e.target.closest('#btnPlayCardAudio')) return;
+    if (cardInfoBody && cardInfoBody.contains(e.target)) return;
+
+    cardInfoDrag.active = true;
+    cardInfoDrag.pointerId = e.pointerId;
+    cardInfoDrag.startX = e.clientX;
+    cardInfoDrag.startY = e.clientY;
+    cardInfoDrag.originX = cardInfoPosition.x;
+    cardInfoDrag.originY = cardInfoPosition.y;
+    cardInfoDrag.moved = false;
+
+    cardInfoPanel.classList.add('dragging');
+    cardInfoPanel.setPointerCapture(e.pointerId);
+  }
+
+  function moveCardInfoDrag(e) {
+    if (!cardInfoDrag.active || e.pointerId !== cardInfoDrag.pointerId) return;
+    const dx = e.clientX - cardInfoDrag.startX;
+    const dy = e.clientY - cardInfoDrag.startY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) cardInfoDrag.moved = true;
+
+    cardInfoPosition.x = cardInfoDrag.originX + dx;
+    cardInfoPosition.y = cardInfoDrag.originY + dy;
+    applyCardInfoPosition();
+  }
+
+  function endCardInfoDrag(e) {
+    if (!cardInfoDrag.active || e.pointerId !== cardInfoDrag.pointerId) return;
+    cardInfoDrag.active = false;
+
+    if (cardInfoPanel?.hasPointerCapture?.(e.pointerId)) {
+      cardInfoPanel.releasePointerCapture(e.pointerId);
+    }
+
+    if (cardInfoDrag.moved) {
+      cardInfoDragPreventClick = true;
+      setTimeout(() => { cardInfoDragPreventClick = false; }, 0);
+    }
+
+    cardInfoPanel?.classList.remove('dragging');
   }
 
   function toggleMusic() {
@@ -1658,6 +1758,17 @@
 
   if (btnCardInfo) {
     btnCardInfo.addEventListener('click', toggleCardInfoPanel);
+  }
+
+  if (btnPlayCardAudio) {
+    btnPlayCardAudio.addEventListener('click', toggleCardAudioPlayback);
+  }
+
+  if (cardInfoPanel) {
+    cardInfoPanel.addEventListener('pointerdown', startCardInfoDrag);
+    cardInfoPanel.addEventListener('pointermove', moveCardInfoDrag);
+    cardInfoPanel.addEventListener('pointerup', endCardInfoDrag);
+    cardInfoPanel.addEventListener('pointercancel', endCardInfoDrag);
   }
 
   // Load from selected files (primary)
