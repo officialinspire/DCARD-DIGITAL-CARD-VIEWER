@@ -48,6 +48,8 @@
     if (!audioBlob) return;
 
     currentCardTrackTitle = getCardAudioTitle(card);
+    lastTrackKind = 'card';
+    audioPaused = false;
     updateMusicStatus();
 
     if (cardAudioUrl) {
@@ -79,6 +81,7 @@
     const targetVolume = clamp((audioSettings.volume ?? 80) / 100, 0, 1);
     const fadeInDuration = audioSettings.fadeIn ?? 1.2;
     const shouldAutoplay = audioSettings.autoplay !== false;
+    cardAudio.dataset.targetVolume = targetVolume;
 
     const startPlayback = () => {
       const playPromise = cardAudio.play();
@@ -200,6 +203,24 @@
   const bgMusic = document.getElementById("bgMusic");
   const footerStatus = document.getElementById("footerStatus");
   const footerMusic = document.getElementById("footerMusic");
+  const playerToggle = document.getElementById("btnPlayerToggle");
+  const playerMute = document.getElementById("btnPlayerMute");
+  const playerTrackTitle = document.getElementById("playerTrackTitle");
+  const playerTime = document.getElementById("playerTime");
+  const playerDuration = document.getElementById("playerDuration");
+  const playerProgressFill = document.getElementById("playerProgressFill");
+
+  const cardInfoPanel = document.getElementById("cardInfoPanel");
+  const btnCardInfo = document.getElementById("btnCardInfo");
+  const cardInfoBody = document.getElementById("cardInfoBody");
+  const cardInfoName = document.getElementById("cardInfoName");
+  const cardInfoSet = document.getElementById("cardInfoSet");
+  const cardInfoDescription = document.getElementById("cardInfoDescription");
+  const cardInfoNumber = document.getElementById("cardInfoNumber");
+  const cardInfoRarity = document.getElementById("cardInfoRarity");
+  const cardInfoSeries = document.getElementById("cardInfoSeries");
+  const cardInfoCreator = document.getElementById("cardInfoCreator");
+  const cardInfoRelease = document.getElementById("cardInfoRelease");
 
   // Settings State
   let settings = {
@@ -241,8 +262,10 @@
 
   let musicPlaying = false;
   let musicMuted = false;
+  let audioPaused = false;
   let userInteracted = false;
   let cardAudioUrl = null;
+  let lastTrackKind = 'bg';
 
   // State
   let autoRotate = false;
@@ -259,9 +282,13 @@
   if (bgMusic) {
     bgMusic.addEventListener('play', () => {
       musicPlaying = true;
+      audioPaused = false;
+      lastTrackKind = 'bg';
       updateMusicStatus();
     });
     bgMusic.addEventListener('pause', updateMusicStatus);
+    bgMusic.addEventListener('timeupdate', updatePlayerUI);
+    bgMusic.addEventListener('loadedmetadata', updatePlayerUI);
   }
 
   if (cardAudio) {
@@ -272,10 +299,90 @@
       updateMusicStatus();
       resumeBackgroundMusic();
     });
+    cardAudio.addEventListener('play', () => {
+      audioPaused = false;
+      lastTrackKind = 'card';
+    });
+    cardAudio.addEventListener('timeupdate', updatePlayerUI);
+    cardAudio.addEventListener('loadedmetadata', updatePlayerUI);
   }
 
   function isCardAudioPlaying() {
     return cardAudio && !cardAudio.paused && cardAudio.currentTime > 0 && !cardAudio.ended;
+  }
+
+  function formatTime(sec = 0) {
+    if (!isFinite(sec)) return "0:00";
+    const minutes = Math.floor(sec / 60);
+    const seconds = Math.floor(sec % 60).toString().padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  }
+
+  function getTrackState() {
+    const cardPlaying = isCardAudioPlaying();
+    const preferCard = cardPlaying || lastTrackKind === 'card';
+    const target = preferCard && cardAudio?.src ? cardAudio : bgMusic;
+    const isPlaying = target && !target.paused && !audioPaused;
+    const duration = target?.duration || 0;
+    const currentTime = target?.currentTime || 0;
+    const title = target === cardAudio && (cardPlaying || cardAudio?.src) ? (currentCardTrackTitle || "Card audio") : `Background: ${BG_MUSIC_TITLE}`;
+
+    lastTrackKind = target === cardAudio && cardAudio?.src ? 'card' : 'bg';
+
+    return { target, isPlaying, duration, currentTime, title };
+  }
+
+  function updateMusicButtons() {
+    const { isPlaying } = getTrackState();
+    const label = isPlaying ? "⏸ Music" : "▶️ Music";
+    if (btnMute) btnMute.textContent = label;
+    if (mMute) mMute.textContent = label;
+  }
+
+  function updatePlayerUI() {
+    const { isPlaying, duration, currentTime, title } = getTrackState();
+    if (playerTrackTitle) playerTrackTitle.textContent = title;
+    if (playerTime) playerTime.textContent = formatTime(currentTime);
+    if (playerDuration) playerDuration.textContent = formatTime(duration || 0);
+    if (playerProgressFill) {
+      const pct = duration ? Math.min((currentTime / duration) * 100, 100) : 0;
+      playerProgressFill.style.width = `${pct}%`;
+    }
+
+    if (playerToggle) playerToggle.textContent = isPlaying ? "⏸" : "▶";
+    if (playerMute) playerMute.textContent = musicMuted ? "🔇" : "🔊";
+  }
+
+  function updateCardInfo(meta = {}) {
+    if (!cardInfoPanel) return;
+    const name = meta.name || "Untitled Card";
+    const set = meta.set || meta.series || "Custom";
+    const description = meta.description || meta.caption || meta.flavor || "No description provided yet.";
+    const number = meta.cardNumber && meta.totalInSet ? `${meta.cardNumber} / ${meta.totalInSet}` : (meta.cardNumber || "—");
+    const rarity = meta.rarity || meta.tier || "—";
+    const series = meta.series || meta.set || "—";
+    const creator = meta.creator || meta.artist || meta.author || "Unknown";
+    const release = meta.release || meta.releaseDate || meta.year || "—";
+
+    if (cardInfoName) cardInfoName.textContent = name;
+    if (cardInfoSet) cardInfoSet.textContent = set;
+    if (cardInfoDescription) cardInfoDescription.textContent = description;
+    if (cardInfoNumber) cardInfoNumber.textContent = number;
+    if (cardInfoRarity) cardInfoRarity.textContent = rarity;
+    if (cardInfoSeries) cardInfoSeries.textContent = series;
+    if (cardInfoCreator) cardInfoCreator.textContent = creator;
+    if (cardInfoRelease) cardInfoRelease.textContent = release;
+  }
+
+  function toggleCardInfoPanel() {
+    if (!cardInfoPanel || !btnCardInfo) return;
+    const expanded = cardInfoPanel.getAttribute('aria-expanded') === 'true';
+    const next = !expanded;
+    cardInfoPanel.setAttribute('aria-expanded', next ? 'true' : 'false');
+    cardInfoPanel.classList.toggle('open', next);
+    if (next && cardInfoBody) {
+      cardInfoBody.scrollTop = 0;
+    }
   }
 
   function updateViewportHeightVar() {
@@ -287,6 +394,10 @@
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateViewportHeightVar);
   }
+
+  updateCardInfo({});
+  updatePlayerUI();
+  updateMusicStatus();
 
   // --- Audio Context for SFX ---
   let audioCtx = null;
@@ -325,7 +436,7 @@
 
   // --- Background Music Functions ---
   function tryStartMusic() {
-    if (musicPlaying || musicMuted || isCardAudioPlaying()) return;
+    if (musicPlaying || musicMuted || audioPaused || isCardAudioPlaying()) return;
 
     console.log("Attempting to start music...");
     bgMusic.volume = 0;
@@ -356,7 +467,7 @@
   }
 
   function startMusicOnInteraction() {
-    if (musicPlaying || userInteracted || isCardAudioPlaying()) return;
+    if (musicPlaying || userInteracted || isCardAudioPlaying() || audioPaused) return;
     
     userInteracted = true;
     console.log("User interacted - starting music");
@@ -414,7 +525,7 @@
   }
 
   function resumeBackgroundMusic() {
-    if (isCardAudioPlaying() || musicMuted) return;
+    if (isCardAudioPlaying() || musicMuted || audioPaused) return;
 
     tryStartMusic();
 
@@ -475,33 +586,62 @@
     const cardIsPlaying = isCardAudioPlaying();
     if (cardIsPlaying) {
       footerMusic.textContent = `Card track: ${currentCardTrackTitle || "Card audio"}`;
+      updateMusicButtons();
+      updatePlayerUI();
       return;
     }
 
     if (musicMuted) {
       footerMusic.textContent = "Music muted";
+    } else if (audioPaused) {
+      footerMusic.textContent = `Audio paused: ${BG_MUSIC_TITLE}`;
     } else if (musicPlaying && !bgMusic.paused) {
       footerMusic.textContent = `Background: ${BG_MUSIC_TITLE}`;
     } else {
       footerMusic.textContent = `Background paused: ${BG_MUSIC_TITLE}`;
     }
+
+    updateMusicButtons();
+    updatePlayerUI();
   }
 
   function toggleMusic() {
+    audioPaused = !audioPaused;
+
+    const activeTrack = isCardAudioPlaying() ? cardAudio : bgMusic;
+
+    if (audioPaused) {
+      if (activeTrack && !activeTrack.paused) {
+        activeTrack.pause();
+      }
+      if (activeTrack === bgMusic) musicPlaying = false;
+    } else {
+      if (activeTrack && activeTrack.paused && activeTrack.currentTime > 0 && !musicMuted) {
+        activeTrack.play().catch(() => {});
+      } else {
+        resumeBackgroundMusic();
+      }
+    }
+
+    clickSfx("click");
+    updateMusicStatus();
+  }
+
+  function toggleMuteAll() {
     musicMuted = !musicMuted;
+    if (cardAudio) cardAudio.muted = musicMuted;
+    if (bgMusic) bgMusic.muted = musicMuted;
 
     if (musicMuted) {
-      fadeOutMusic(0.8);
-      btnMute.textContent = "🔇 Music";
-      mMute.textContent = "🔇 Music";
-    } else {
-      if (!musicPlaying) {
-        tryStartMusic();
+      fadeOutMusic(0.4);
+    } else if (!audioPaused) {
+      if (isCardAudioPlaying()) {
+        const target = Number(cardAudio?.dataset?.targetVolume || cardAudio.volume || 1);
+        fadeAudioVolume(cardAudio, target, 0.4);
       } else {
-        fadeInMusic(0.8);
+        resumeBackgroundMusic();
+        fadeInMusic(0.4);
       }
-      btnMute.textContent = "🔊 Music";
-      mMute.textContent = "🔊 Music";
     }
 
     clickSfx("click");
@@ -540,6 +680,8 @@
     // Update music volume
     const targetVolume = musicMuted ? 0 : (settings.musicVolume / 100);
     bgMusic.volume = targetVolume;
+    bgMusic.muted = musicMuted;
+    if (cardAudio) cardAudio.muted = musicMuted;
 
     // Apply graphics quality
     applyGraphicsQuality();
@@ -814,6 +956,8 @@
       lastFrontAsset = card.frontAsset;
       lastBackAsset = card.backAsset;
 
+      updateCardInfo(loadedMeta || {});
+
       cardGroup.rotation.x = rot.x;
       cardGroup.rotation.y = rot.y;
 
@@ -972,6 +1116,8 @@
       loadedMeta = card.metadata || null;
       lastFrontAsset = front;
       lastBackAsset = back;
+
+      updateCardInfo(loadedMeta || {});
 
       recordFingerprintEvent('imported');
       saveCurrentToBinder('stored');
@@ -1502,10 +1648,17 @@
 
   // Music toggle
   btnMute.addEventListener("click", toggleMusic);
-  mMute.addEventListener("click", () => { 
-    toggleMusic(); 
-    closeMobileMenu(); 
+  mMute.addEventListener("click", () => {
+    toggleMusic();
+    closeMobileMenu();
   });
+
+  if (playerToggle) playerToggle.addEventListener('click', toggleMusic);
+  if (playerMute) playerMute.addEventListener('click', toggleMuteAll);
+
+  if (btnCardInfo) {
+    btnCardInfo.addEventListener('click', toggleCardInfoPanel);
+  }
 
   // Load from selected files (primary)
   btnLoadFiles.addEventListener("click", async () => {
@@ -1535,6 +1688,8 @@
         cardNumber: "1",
         totalInSet: "1"
       };
+
+      updateCardInfo(loadedMeta);
 
       clearCard();
       cardGroup = createCard(frontTex, backTex);
@@ -1574,6 +1729,8 @@
         cardNumber: "1",
         totalInSet: "1"
       };
+
+      updateCardInfo(loadedMeta);
 
       clearCard();
       cardGroup = createCard(frontTex, backTex);

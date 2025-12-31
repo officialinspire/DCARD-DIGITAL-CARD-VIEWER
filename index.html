@@ -213,6 +213,43 @@
 
         <div id="loading" class="loading" style="display:none;">Loading…</div>
 
+        <div class="card-info" id="cardInfoPanel" aria-expanded="false">
+          <button class="card-info-toggle" id="btnCardInfo" type="button">
+            <span class="card-info-icon">🛈</span>
+            <span class="card-info-label">Card Info</span>
+            <span class="card-info-chevron" aria-hidden="true">▼</span>
+          </button>
+          <div class="card-info-body" id="cardInfoBody">
+            <div class="card-info-header">
+              <div class="card-info-title" id="cardInfoName">No card loaded</div>
+              <div class="card-info-sub" id="cardInfoSet">Load a card to see details</div>
+            </div>
+            <p class="card-info-description" id="cardInfoDescription">Upload a card or import a .dcard file to populate this panel.</p>
+            <dl class="card-info-meta">
+              <div>
+                <dt>Number</dt>
+                <dd id="cardInfoNumber">—</dd>
+              </div>
+              <div>
+                <dt>Rarity</dt>
+                <dd id="cardInfoRarity">—</dd>
+              </div>
+              <div>
+                <dt>Series / Set</dt>
+                <dd id="cardInfoSeries">—</dd>
+              </div>
+              <div>
+                <dt>Creator</dt>
+                <dd id="cardInfoCreator">—</dd>
+              </div>
+              <div>
+                <dt>Release</dt>
+                <dd id="cardInfoRelease">—</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
         <!-- Uploader (shown by default) -->
         <div id="picker" class="picker show" aria-hidden="false">
           <div class="picker-card">
@@ -256,9 +293,26 @@
       </main>
 
       <footer class="footer">
-        <span id="footerStatus">.dcard ready holographic foil</span>
-        <span class="footer-divider" aria-hidden="true">•</span>
-        <span id="footerMusic">Background: Dante's World - Dark Void</span>
+        <div class="footer-left">
+          <span id="footerStatus">.dcard ready holographic foil</span>
+          <span class="footer-divider" aria-hidden="true">•</span>
+          <span id="footerMusic">Background: Dante's World - Dark Void</span>
+        </div>
+
+        <div class="audio-player" aria-label="Audio player controls">
+          <button class="player-btn" id="btnPlayerToggle" type="button" aria-label="Play or pause audio">⏯</button>
+          <div class="player-track">
+            <div class="player-title" id="playerTrackTitle">Background: Dante's World - Dark Void</div>
+            <div class="player-meta">
+              <span class="player-time" id="playerTime">0:00</span>
+              <div class="player-progress" aria-hidden="true">
+                <div class="player-progress-fill" id="playerProgressFill"></div>
+              </div>
+              <span class="player-time" id="playerDuration">0:00</span>
+            </div>
+          </div>
+          <button class="player-btn" id="btnPlayerMute" type="button" aria-label="Mute or unmute audio">🔊</button>
+        </div>
       </footer>
     </div>
 
