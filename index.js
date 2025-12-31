@@ -547,48 +547,48 @@
     document.addEventListener(event, startMusicOnInteraction, { once: true });
   });
 
-  function fadeInMusic(duration = 2.5) {
-    const targetVolume = musicMuted ? 0 : (settings.musicVolume / 100);
-    const startVolume = bgMusic.volume;
-    const startTime = performance.now();
+    function fadeInMusic(duration = 2.5) {
+      const targetVolume = clamp(musicMuted ? 0 : (settings.musicVolume / 100), 0, 1);
+      const startVolume = clamp(bgMusic.volume, 0, 1);
+      const startTime = performance.now();
 
-    function updateVolume(currentTime) {
-      const elapsed = (currentTime - startTime) / 1000;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Smooth ease-in curve
-      const easedProgress = progress * progress;
-      bgMusic.volume = startVolume + (targetVolume - startVolume) * easedProgress;
+      function updateVolume(currentTime) {
+        const elapsed = (currentTime - startTime) / 1000;
+        const progress = Math.min(elapsed / duration, 1);
 
-      if (progress < 1) {
-        requestAnimationFrame(updateVolume);
+        // Smooth ease-in curve
+        const easedProgress = progress * progress;
+        bgMusic.volume = clamp(startVolume + (targetVolume - startVolume) * easedProgress, 0, 1);
+
+        if (progress < 1) {
+          requestAnimationFrame(updateVolume);
+        }
       }
+
+      requestAnimationFrame(updateVolume);
     }
 
-    requestAnimationFrame(updateVolume);
-  }
+    function fadeOutMusic(duration = 1.2) {
+      const startVolume = clamp(bgMusic.volume ?? 0, 0, 1);
+      const startTime = performance.now();
 
-  function fadeOutMusic(duration = 1.2) {
-    const startVolume = bgMusic.volume;
-    const startTime = performance.now();
+      function updateVolume(currentTime) {
+        const elapsed = (currentTime - startTime) / 1000;
+        const progress = Math.min(elapsed / duration, 1);
 
-    function updateVolume(currentTime) {
-      const elapsed = (currentTime - startTime) / 1000;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      bgMusic.volume = startVolume * (1 - progress);
+        bgMusic.volume = clamp(startVolume * (1 - progress), 0, 1);
 
-      if (progress < 1) {
-        requestAnimationFrame(updateVolume);
-      } else {
-        bgMusic.pause();
-        musicPlaying = false;
-        updateMusicStatus();
+        if (progress < 1) {
+          requestAnimationFrame(updateVolume);
+        } else {
+          bgMusic.pause();
+          musicPlaying = false;
+          updateMusicStatus();
+        }
       }
-    }
 
-    requestAnimationFrame(updateVolume);
-  }
+      requestAnimationFrame(updateVolume);
+    }
 
   function resumeBackgroundMusic() {
     if (isCardAudioPlaying() || musicMuted || audioPaused) return;
@@ -989,43 +989,75 @@
     }
   }
 
-  function persistBinderState() {
-    const save = () => localStorage.setItem(BINDER_KEY, JSON.stringify(binderState));
-    const isQuotaError = (err) => err?.name === 'QuotaExceededError' || err?.code === 22 || err?.code === 1014;
+    function persistBinderState() {
+      const encoder = new TextEncoder();
+      const serialize = () => JSON.stringify(binderState);
+      const getByteSize = () => encoder.encode(serialize()).length;
+      const MAX_BYTES = 4.5 * 1024 * 1024; // ~4.5MB budget to stay under localStorage limits
+      const save = () => localStorage.setItem(BINDER_KEY, serialize());
+      const isQuotaError = (err) => err?.name === 'QuotaExceededError' || err?.code === 22 || err?.code === 1014;
 
-    try {
-      save();
-      return;
-    } catch (err) {
-      console.warn("Failed to persist binder", err);
-      if (!isQuotaError(err)) return;
-    }
+      // Proactively trim if the serialized payload is already too large for localStorage
+      let removed = 0;
+      let firstRemovedCard = null;
+      let size = getByteSize();
 
-    // Try to reclaim space by trimming the oldest entries when storage is full.
-    let removed = 0;
+      while (size > MAX_BYTES && binderState.cards.length > 1) {
+        const removedCard = binderState.cards.shift();
+        if (!firstRemovedCard) firstRemovedCard = removedCard;
+        removed += 1;
+        size = getByteSize();
+      }
 
-    while (binderState.cards.length > 0) {
-      const removedCard = binderState.cards.shift();
-      removed += 1;
+      if (size > MAX_BYTES) {
+        console.warn("Latest binder entry is too large to persist", { size });
+        renderBinder();
+        alert("This card is too large for the browser binder. Please export it or clear older entries first.");
+        return;
+      }
+
+      if (removed > 0) {
+        renderBinder();
+        alert(
+          `Binder storage was almost full. Removed ${removed} entr${removed === 1 ? 'y' : 'ies'} ` +
+          (firstRemovedCard ? `starting with "${firstRemovedCard?.name || 'a card'}" ` : '') +
+          `to make room for the latest card.`
+        );
+      }
 
       try {
         save();
-        renderBinder();
-        alert(
-          `Binder storage was full. Removed ${removed} entr${removed === 1 ? 'y' : 'ies'} ` +
-          `starting with "${removedCard?.name || 'a card'}" to save the latest card.`
-        );
         return;
       } catch (err) {
-        if (!isQuotaError(err)) {
-          console.warn("Unexpected error while trimming binder", err);
-          break;
+        console.warn("Failed to persist binder", err);
+        if (!isQuotaError(err)) return;
+      }
+
+      // Try to reclaim space by trimming the oldest entries when storage is full.
+      let removedDuringRecovery = 0;
+
+      while (binderState.cards.length > 0) {
+        const removedCard = binderState.cards.shift();
+        removedDuringRecovery += 1;
+
+        try {
+          save();
+          renderBinder();
+          alert(
+            `Binder storage was full. Removed ${removedDuringRecovery} entr${removedDuringRecovery === 1 ? 'y' : 'ies'} ` +
+            `starting with "${removedCard?.name || 'a card'}" to save the latest card.`
+          );
+          return;
+        } catch (err) {
+          if (!isQuotaError(err)) {
+            console.warn("Unexpected error while trimming binder", err);
+            break;
+          }
         }
       }
-    }
 
-    alert("Binder storage is full and could not save. Please export or clear entries.");
-  }
+      alert("Binder storage is full and could not save. Please export or clear entries.");
+    }
 
   function normalizeFingerprintLog(log) {
     return Array.isArray(log) ? log : [];
