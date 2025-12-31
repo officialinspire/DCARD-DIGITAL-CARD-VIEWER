@@ -1461,6 +1461,25 @@
     }
   }
 
+  function hasEmbeddedCardArt(card) {
+    return !!(card?.assets?.cardFront?.data && card?.assets?.cardBack?.data);
+  }
+
+  async function ensureEmbeddedAssets(card, sourceFile) {
+    if (hasEmbeddedCardArt(card)) return card;
+
+    const isZipSource = (sourceFile?.name || "").toLowerCase().endsWith('.zip');
+    if (!isZipSource || !dcard?.loadFromZip) return card;
+
+    try {
+      console.info('Attempting to hydrate external assets from zip…');
+      return await dcard.loadFromZip(sourceFile);
+    } catch (err) {
+      console.warn('Zip hydration failed', err);
+      return card;
+    }
+  }
+
   async function loadDcardFile(file) {
     if (!dcard) {
       alert("DCard library failed to load.");
@@ -1469,7 +1488,8 @@
 
     setLoading(true, "Loading .dcard file…");
     try {
-      const card = await dcard.load(file);
+      let card = await dcard.load(file);
+      card = await ensureEmbeddedAssets(card, file);
       const security = await evaluateCardSecurity(card);
       if (window.DCardStorage && security?.fingerprint) {
         try {
