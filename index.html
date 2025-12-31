@@ -224,9 +224,13 @@
             <div class="card-info-header">
               <div class="card-info-title" id="cardInfoName">No card loaded</div>
               <div class="card-info-sub" id="cardInfoSet">Load a card to see details</div>
+              <div class="verification-row">
+                <span class="verification-badge" id="verificationBadge" aria-live="polite">UNVERIFIED</span>
+              </div>
             </div>
             <div class="card-info-actions">
               <button class="btn card-audio-btn" id="btnPlayCardAudio" type="button">▶ Play audio</button>
+              <button class="btn" id="btnTradeCard" type="button">Trade / Share</button>
               <div class="card-audio-hint">Smoothly switch from the background music to this card's track.</div>
             </div>
             <p class="card-info-description" id="cardInfoDescription">Upload a card or import a .dcard file to populate this panel.</p>
@@ -355,6 +359,25 @@
       </div>
     </div>
 
+    <div id="tradeModal" class="trade-modal" aria-hidden="true">
+      <div class="trade-dialog">
+        <div class="trade-header">
+          <div>
+            <div class="trade-title">Trade / Share</div>
+            <div class="trade-sub">Scan the QR or copy the link to auto-import.</div>
+          </div>
+          <button class="close-btn" id="btnCloseTrade" aria-label="Close trade modal">✕</button>
+        </div>
+        <div class="trade-body">
+          <canvas id="tradeQr" width="240" height="240" aria-label="Trade QR"></canvas>
+          <div class="trade-actions">
+            <input id="tradeLink" class="trade-link" readonly />
+            <button class="btn" id="btnCopyTrade" type="button">Copy Link</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Audio element for card-specific audio -->
     <audio id="cardAudio" preload="auto" playsinline></audio>
 
@@ -364,8 +387,16 @@
       Your browser does not support the audio element.
     </audio>
 
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
     <script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="./js/crypto.js"></script>
+    <script src="./js/verify.js"></script>
+    <script src="./js/storage.js"></script>
+    <script src="./js/import.js"></script>
+    <script src="./js/qr.js"></script>
     <script src="./DCard-v2.js"></script>
     <script src="./index.js"></script>
   </body>

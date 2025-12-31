@@ -8,7 +8,7 @@
 class DCard {
   constructor() {
     this.format = 'dcard';
-    this.version = '2.0';
+    this.version = 2;
     
     // Specialty badge presets
     this.badgePresets = {
@@ -29,12 +29,17 @@ class DCard {
    * Create a new .dcard file (v2.0 with collectibles features)
    */
   async create(options = {}) {
+    const issuer = options.issuer || 'INSPIRE';
+    const issuedAt = options.issuedAt || new Date().toISOString();
+
     const card = {
       format: this.format,
       version: this.version,
       fingerprint: '',
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
+      issuer,
+      issuedAt,
       
       metadata: {
         // Core identity
@@ -779,11 +784,19 @@ class DCard {
   }
 
   async generateFingerprint(card) {
+    if (typeof window !== 'undefined' && window.DCardCrypto?.computeFingerprint) {
+      const { fingerprint } = await window.DCardCrypto.computeFingerprint(card);
+      return fingerprint;
+    }
+
+    // Fallback hashing for environments without the helper. This hashes core metadata
+    // only and is less strict than the canonicalized approach above.
+
     const data = {
       metadata: card.metadata,
       created: card.created
     };
-    
+
     const text = JSON.stringify(data);
     const encoder = new TextEncoder();
     const dataBuffer = encoder.encode(text);
