@@ -494,12 +494,20 @@ class DCard {
         // Read asset as base64
         const assetData = await assetFile.async('base64');
 
+        const filename = assetRef.file || '';
+        const name = assetRef.name || filename.split('/').pop()?.replace(/\.[^.]+$/, '') || '';
+
         // Return asset in the original format (with base64 data)
         return {
           type: assetRef.type,
           data: assetData,
           width: assetRef.width,
-          height: assetRef.height
+          height: assetRef.height,
+          file: filename,
+          name,
+          filename,
+          fileName: filename,
+          title: assetRef.title || name
         };
       };
 

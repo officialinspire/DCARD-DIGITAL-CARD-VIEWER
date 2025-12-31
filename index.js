@@ -4,7 +4,7 @@
     return;
   }
 
-  function stopCardAudio(fadeDuration = 0.5, { resetTitle = true } = {}) {
+  function stopCardAudio(fadeDuration = 0.5, { resetTitle = true, resumeMusic = true } = {}) {
     if (!cardAudio) return;
 
     const endPlayback = () => {
@@ -16,6 +16,10 @@
         cardAudioUrl = null;
       }
       updateMusicStatus();
+
+      if (resumeMusic) {
+        resumeBackgroundMusic();
+      }
     };
 
     if (cardAudio.volume > 0) {
@@ -28,10 +32,15 @@
   function playCardAudio(card) {
     if (!cardAudio || !card) return;
 
+    if (bgMusic && !bgMusic.paused) {
+      bgMusic.pause();
+      musicPlaying = false;
+    }
+
     const audioAsset = card.assets?.audio?.theme;
     const audioSettings = card.assets?.audio?.settings || {};
 
-    stopCardAudio(0.5, { resetTitle: false });
+    stopCardAudio(0.5, { resetTitle: false, resumeMusic: false });
 
     if (!audioAsset || !audioAsset.data || !dcard) return;
 
@@ -261,7 +270,12 @@
     cardAudio.addEventListener('ended', () => {
       currentCardTrackTitle = null;
       updateMusicStatus();
+      resumeBackgroundMusic();
     });
+  }
+
+  function isCardAudioPlaying() {
+    return cardAudio && !cardAudio.paused && cardAudio.currentTime > 0 && !cardAudio.ended;
   }
 
   function updateViewportHeightVar() {
@@ -311,7 +325,7 @@
 
   // --- Background Music Functions ---
   function tryStartMusic() {
-    if (musicPlaying || musicMuted) return;
+    if (musicPlaying || musicMuted || isCardAudioPlaying()) return;
 
     console.log("Attempting to start music...");
     bgMusic.volume = 0;
@@ -332,6 +346,8 @@
   }
 
   function startMusicWithFade() {
+    if (isCardAudioPlaying()) return;
+
     userInteracted = true;
     tryStartMusic();
     if (musicPlaying && !musicMuted) {
@@ -340,7 +356,7 @@
   }
 
   function startMusicOnInteraction() {
-    if (musicPlaying || userInteracted) return;
+    if (musicPlaying || userInteracted || isCardAudioPlaying()) return;
     
     userInteracted = true;
     console.log("User interacted - starting music");
@@ -397,6 +413,25 @@
     requestAnimationFrame(updateVolume);
   }
 
+  function resumeBackgroundMusic() {
+    if (isCardAudioPlaying() || musicMuted) return;
+
+    tryStartMusic();
+
+    if (musicPlaying && !musicMuted && bgMusic.paused) {
+      const playPromise = bgMusic.play();
+      if (playPromise?.catch) {
+        playPromise.catch(() => {});
+      }
+    }
+
+    if (musicPlaying && !musicMuted) {
+      fadeInMusic(1.0);
+    }
+
+    updateMusicStatus();
+  }
+
   function fadeAudioVolume(el, targetVolume, duration = 1.0, onComplete) {
     if (!el) return;
 
@@ -437,7 +472,7 @@
     if (footerStatus) footerStatus.textContent = BASE_STATUS;
     if (!footerMusic) return;
 
-    const cardIsPlaying = cardAudio && !cardAudio.paused && cardAudio.currentTime > 0 && !cardAudio.ended;
+    const cardIsPlaying = isCardAudioPlaying();
     if (cardIsPlaying) {
       footerMusic.textContent = `Card track: ${currentCardTrackTitle || "Card audio"}`;
       return;
