@@ -1121,6 +1121,7 @@
       meta: metaCopy,
       frontAsset: lastFrontAsset,
       backAsset: lastBackAsset,
+      audioAsset: loadedCardData?.assets?.audio?.theme || null,
     };
 
     loadedMeta = metaCopy;
@@ -1149,6 +1150,10 @@
     card.assets = card.assets || {};
     card.assets.cardFront = card.assets.cardFront || lastFrontAsset;
     card.assets.cardBack = card.assets.cardBack || lastBackAsset;
+
+    if (!card.assets.audio?.theme && entry.audioAsset) {
+      card.assets.audio = { ...(card.assets.audio || {}), theme: entry.audioAsset };
+    }
 
     if (loadedCardData?.assets?.audio?.theme) {
       card.assets.audio = { ...(card.assets.audio || {}), theme: loadedCardData.assets.audio.theme };
@@ -1188,6 +1193,7 @@
     let front = entry.frontAsset;
     let back = entry.backAsset;
     let cardData = null;
+    let audio = entry.audioAsset || null;
 
     const storageKey = entry.storageKey || entry.fingerprint;
     if ((!front?.data || !back?.data) && storageKey && window.DCardStorage) {
@@ -1196,12 +1202,13 @@
         cardData = stored?.cardObj || stored;
         front = cardData?.assets?.cardFront || front;
         back = cardData?.assets?.cardBack || back;
+        audio = cardData?.assets?.audio?.theme || audio;
       } catch (err) {
         console.warn('Failed to hydrate binder assets from storage', err);
       }
     }
 
-    return { front, back, cardData };
+    return { front, back, audio, cardData };
   }
 
   async function saveCurrentToBinder(status = 'stored') {
@@ -1227,7 +1234,7 @@
     if (!card) return;
     setLoading(true, "Loading from binder…");
     try {
-      const { front, back, cardData } = await resolveBinderEntryAssets(card);
+      const { front, back, audio, cardData } = await resolveBinderEntryAssets(card);
       if (!front?.data || !back?.data) {
         throw new Error('Card assets missing from binder');
       }
@@ -1241,7 +1248,12 @@
 
       const metaSource = cardData?.metadata || card.meta || {};
       loadedMeta = { ...metaSource, binderId: card.id, fingerprintLog: card.fingerprintLog || metaSource.fingerprintLog || [] };
-      loadedCardData = cardData || null;
+      loadedCardData = cardData || (audio ? {
+        format: 'dcard',
+        version: '2.0',
+        metadata: metaSource,
+        assets: { cardFront: front, cardBack: back, audio: { theme: audio } }
+      } : null);
       lastFrontAsset = front;
       lastBackAsset = back;
 
@@ -1254,7 +1266,7 @@
       showPicker(false);
       hideStartMenu();
       closeBinder();
-      if (cardData) handleCardAudio(cardData);
+      if (loadedCardData) handleCardAudio(loadedCardData);
     } catch (err) {
       console.error(err);
       alert("Unable to load card from binder.");
