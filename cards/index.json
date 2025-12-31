@@ -1,0 +1,7 @@
+{
+  "sha256-example": {
+    "driveId": "GOOGLE_DRIVE_FILE_ID",
+    "fileName": "sha256-example.dcard",
+    "issuer": "INSPIRE"
+  }
+}

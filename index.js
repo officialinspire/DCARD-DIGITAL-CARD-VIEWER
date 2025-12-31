@@ -197,6 +197,9 @@
   const binderExportedCount = document.getElementById("binderExportedCount");
   const binderUpdatedAt = document.getElementById("binderUpdatedAt");
   const btnCloseBinder = document.getElementById("btnCloseBinder");
+  const verificationBadge = document.getElementById("verificationBadge");
+  const btnTradeCard = document.getElementById("btnTradeCard");
+  const toastEl = document.getElementById("toast");
 
   // Audio
   const cardAudio = document.getElementById("cardAudio");
@@ -287,6 +290,7 @@
   let lastFrontAsset = null;
   let lastBackAsset = null;
   let currentCardTrackTitle = null;
+  let verificationState = { status: 'unverified', reason: '' };
 
   const BINDER_KEY = 'dcard-binder-v1';
   let binderState = loadBinderState();
@@ -388,6 +392,35 @@
     updateCardAudioButton();
   }
 
+  let toastTimer = null;
+  function showToast(message) {
+    if (!toastEl) return;
+    toastEl.textContent = message;
+    toastEl.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3200);
+  }
+  window.showToast = showToast;
+
+  function updateVerificationBadge(state = {}) {
+    verificationState = state;
+    if (!verificationBadge) return;
+    verificationBadge.classList.remove('verified', 'unsigned', 'invalid');
+    let label = 'UNVERIFIED';
+    if (state.status === 'verified' || state.verified) {
+      label = 'VERIFIED';
+      verificationBadge.classList.add('verified');
+    } else if (state.status === 'invalid') {
+      label = 'INVALID';
+      verificationBadge.classList.add('invalid');
+    } else if (state.status === 'unsigned' || state.unsigned) {
+      label = 'UNSIGNED';
+      verificationBadge.classList.add('unsigned');
+    }
+    verificationBadge.textContent = label;
+    verificationBadge.title = state.reason || '';
+  }
+
   function toggleCardInfoPanel() {
     if (!cardInfoPanel || !btnCardInfo) return;
     if (cardInfoDragPreventClick) {
@@ -428,6 +461,7 @@
   }
 
   updateCardInfo({});
+  updateVerificationBadge({ status: 'unsigned', reason: 'No card loaded' });
   updatePlayerUI();
   updateMusicStatus();
 
@@ -1087,6 +1121,7 @@
       lastBackAsset = card.backAsset;
 
       updateCardInfo(loadedMeta || {});
+      updateVerificationBadge({ status: 'unsigned', reason: 'Binder card (no signature)' });
 
       cardGroup.rotation.x = rot.x;
       cardGroup.rotation.y = rot.y;
@@ -1219,6 +1254,74 @@
     fileDcard.click();
   }
 
+  async function evaluateCardSecurity(card) {
+    if (window.DCardImport?.verifyCard) {
+      const result = await window.DCardImport.verifyCard(card);
+      const status = result.status || (result.verified ? 'verified' : result.unsigned ? 'unsigned' : 'unverified');
+      return { ...result, status };
+    }
+
+    return { status: 'unverified', reason: 'Verification unavailable' };
+  }
+
+  async function renderLoadedCard(card, security = {}) {
+    const front = card.assets?.cardFront;
+    const back = card.assets?.cardBack;
+    if (!front || !back) throw new Error("Missing front/back assets in .dcard");
+    if (!front.data || !back.data) {
+      throw new Error("Card references external files. Please import the packaged .zip export.");
+    }
+
+    const frontTex = await textureFromAsset(front);
+    const backTex = await textureFromAsset(back);
+
+    clearCard();
+    cardGroup = createCard(frontTex, backTex);
+    root.add(cardGroup);
+
+    loadedCardData = card;
+    loadedMeta = card.metadata || null;
+    lastFrontAsset = front;
+    lastBackAsset = back;
+
+    updateCardInfo(loadedMeta || {});
+    updateVerificationBadge(security || {});
+
+    recordFingerprintEvent('imported');
+    saveCurrentToBinder('stored');
+
+    cardGroup.rotation.x = rot.x;
+    cardGroup.rotation.y = rot.y;
+
+    showPicker(false);
+    hideStartMenu();
+    handleCardAudio(card);
+  }
+
+  async function openTradeDialog() {
+    if (!loadedCardData) {
+      showToast('Load a card first to share.');
+      return;
+    }
+
+    let fp = loadedCardData.fingerprint;
+    if (!fp && window.DCardCrypto?.computeFingerprint) {
+      const computed = await window.DCardCrypto.computeFingerprint(loadedCardData);
+      fp = computed.fingerprint;
+      loadedCardData.fingerprint = fp;
+    }
+
+    if (!fp) {
+      showToast('Fingerprint unavailable for sharing');
+      return;
+    }
+
+    const tradeUrl = `${location.origin}${location.pathname}?import=/cards/${fp}.dcard`;
+    if (window.TradeQR?.openTradeModal) {
+      window.TradeQR.openTradeModal(tradeUrl);
+    }
+  }
+
   async function loadDcardFile(file) {
     if (!dcard) {
       alert("DCard library failed to load.");
@@ -1228,36 +1331,21 @@
     setLoading(true, "Loading .dcard file…");
     try {
       const card = await dcard.load(file);
-      const front = card.assets?.cardFront;
-      const back = card.assets?.cardBack;
-      if (!front || !back) throw new Error("Missing front/back assets in .dcard");
-      if (!front.data || !back.data) {
-        throw new Error("Card references external files. Please import the packaged .zip export.");
+      const security = await evaluateCardSecurity(card);
+      if (window.DCardStorage && security?.fingerprint) {
+        try {
+          await window.DCardStorage.saveCard({
+            fingerprint: security.fingerprint,
+            cardObj: card,
+            verified: security.verified,
+            unsigned: security.unsigned,
+            addedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          console.warn('IndexedDB save failed', err);
+        }
       }
-
-      const frontTex = await textureFromAsset(front);
-      const backTex = await textureFromAsset(back);
-
-      clearCard();
-      cardGroup = createCard(frontTex, backTex);
-      root.add(cardGroup);
-
-      loadedCardData = card;
-      loadedMeta = card.metadata || null;
-      lastFrontAsset = front;
-      lastBackAsset = back;
-
-      updateCardInfo(loadedMeta || {});
-
-      recordFingerprintEvent('imported');
-      saveCurrentToBinder('stored');
-
-      cardGroup.rotation.x = rot.x;
-      cardGroup.rotation.y = rot.y;
-
-      showPicker(false);
-      hideStartMenu();
-      handleCardAudio(card);
+      await renderLoadedCard(card, security);
     } catch (err) {
       console.error(err);
       alert(`Failed to load .dcard: ${err.message}`);
@@ -1794,6 +1882,10 @@
     btnPlayCardAudio.addEventListener('click', toggleCardAudioPlayback);
   }
 
+  if (btnTradeCard) {
+    btnTradeCard.addEventListener('click', () => openTradeDialog());
+  }
+
   if (cardInfoPanel) {
     cardInfoPanel.addEventListener('pointerdown', startCardInfoDrag);
     cardInfoPanel.addEventListener('pointermove', moveCardInfoDrag);
@@ -1831,6 +1923,7 @@
       };
 
       updateCardInfo(loadedMeta);
+      updateVerificationBadge({ status: 'unsigned', reason: 'Local images' });
 
       clearCard();
       cardGroup = createCard(frontTex, backTex);
@@ -1872,6 +1965,7 @@
       };
 
       updateCardInfo(loadedMeta);
+      updateVerificationBadge({ status: 'unsigned', reason: 'Demo card' });
 
       clearCard();
       cardGroup = createCard(frontTex, backTex);
@@ -1969,6 +2063,13 @@
     showPicker(true);
     setLoading(false);
     renderBinder();
+    if (window.DCardImport) {
+      window.DCardImport.init({
+        onCardLoaded: (card, security) => renderLoadedCard(card, security),
+        onToast: showToast,
+        gatewayUrl: window.DCARD_GATEWAY_URL || ''
+      });
+    }
     resize();
     updateMusicStatus();
     animate();
