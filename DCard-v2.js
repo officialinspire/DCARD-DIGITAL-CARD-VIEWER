@@ -707,6 +707,12 @@ class DCard {
       exportCard.assets.audio.theme = addAsset(card.assets.audio.theme, 'theme');
     }
 
+    // Refresh integrity values now that the asset references have changed
+    exportCard.modified = new Date().toISOString();
+    exportCard.fingerprint = await this.generateFingerprint(exportCard);
+    exportCard.signature = exportCard.signature || {};
+    exportCard.signature.checksum = await this.generateChecksum(exportCard);
+
     // Add the .dcard JSON file with file references
     const json = JSON.stringify(exportCard, null, 2);
     folder.file('card.dcard', json);
