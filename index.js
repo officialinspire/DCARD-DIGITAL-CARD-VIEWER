@@ -1286,8 +1286,6 @@
 
     updateCardInfo(loadedMeta || {});
     updateVerificationBadge(security || {});
-
-    recordFingerprintEvent('imported');
     saveCurrentToBinder('stored');
 
     cardGroup.rotation.x = rot.x;
@@ -1315,6 +1313,9 @@
       showToast('Fingerprint unavailable for sharing');
       return;
     }
+
+    recordFingerprintEvent('traded');
+    saveCurrentToBinder('stored');
 
     const tradeUrl = `${location.origin}${location.pathname}?import=/cards/${fp}.dcard`;
     if (window.TradeQR?.openTradeModal) {

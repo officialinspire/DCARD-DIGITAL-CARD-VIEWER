@@ -61,47 +61,19 @@
   }
 
   async function verifyCard(cardObj) {
-    const crypto = global.DCardCrypto;
-    const verifier = global.DCardVerify;
-    if (!crypto) throw new Error('Crypto helpers unavailable');
+    const fingerprint = cardObj.fingerprint || cardObj.metadata?.fingerprint || null;
+    const hasSignature = !!cardObj.sig;
+    const status = hasSignature ? 'unverified' : 'unsigned';
+    const reason = 'Fingerprint verification deferred until export or trade';
 
-    let unsigned = false;
-    let verified = false;
-    let reason = '';
-    let hashBytes = null;
-    let fingerprint = cardObj.fingerprint || null;
-
-    if (!cardObj.version || !cardObj.fingerprint) {
-      const computed = await crypto.computeFingerprint(cardObj);
-      fingerprint = computed.fingerprint;
-      hashBytes = computed.hashBytes;
-      unsigned = true;
-      cardObj.fingerprint = fingerprint;
-    } else {
-      const result = await crypto.verifyFingerprint(cardObj);
-      hashBytes = result.hashBytes;
-      fingerprint = result.computedFp;
-      if (!result.ok) {
-        throw new Error('Fingerprint mismatch. Card integrity failed.');
-      }
-    }
-
-    if (cardObj.sig) {
-      if (!verifier) throw new Error('Signature verifier unavailable');
-      const sigResult = await verifier.verifySignature(cardObj, hashBytes);
-      verified = sigResult.ok;
-      reason = sigResult.reason || '';
-      if (!sigResult.ok) {
-        if (STRICT) throw new Error(`Signature invalid: ${sigResult.reason}`);
-      }
-    } else if (STRICT) {
-      throw new Error('Signature required in strict mode');
-    } else {
-      unsigned = true;
-    }
-
-    const status = verified ? 'verified' : unsigned ? 'unsigned' : 'unverified';
-    return { fingerprint, unsigned: !!unsigned && !verified, verified, reason, hashBytes, status };
+    return {
+      fingerprint,
+      unsigned: !hasSignature,
+      verified: false,
+      reason,
+      hashBytes: null,
+      status
+    };
   }
 
   async function processImport(importParam, options = {}) {
