@@ -48,6 +48,20 @@
     if (clone && typeof clone === 'object') {
       delete clone.fingerprint;
       delete clone.sig;
+
+      // The signature block is mutated during export/verification (checksum and
+      // verified flags change). To keep the fingerprint stable across those
+      // mutations, normalize it to its creation-time shape before hashing.
+      if (clone.signature) {
+        const { creator, network, blockchain } = clone.signature;
+        clone.signature = {
+          creator,
+          network,
+          checksum: '',
+          verified: false,
+          blockchain: blockchain || null
+        };
+      }
     }
     const canonicalStr = canonicalStringify(clone);
     const hashBytes = await sha256Bytes(canonicalStr);
